@@ -36,6 +36,51 @@
 *.exe
 *.out
 *.app
+KiaakEngine
 
-# debug information files
+# Debug information files
 *.dwo
+*.dSYM/
+*.su
+*.idb
+
+# Build directories
+build/
+out/
+Debug/
+Release/
+x64/
+
+# CMake generated files
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+*.cmake
+Makefile
+
+# IDE specific files
+.vscode/*
+!.vscode/c_cpp_properties.json
+.vs/
+.idea/
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Dependencies
+/vendor/
+/external/
+/third-party/
+
+# Logs and databases
+*.log
+*.sql
+*.sqlite
