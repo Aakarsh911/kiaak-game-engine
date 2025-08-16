@@ -7,9 +7,12 @@
                 "${workspaceFolder}/src",
                 "${workspaceFolder}/**",
                 "/Library/Developer/CommandLineTools/usr/include/c++/v1",
-                "/opt/homebrew/Cellar/glfw/3.4/include"
+                "/opt/homebrew/Cellar/glfw/3.4/include",
+                "/opt/homebrew/Cellar/glm/1.0.1/include"
             ],
-            "defines": [],
+            "defines": [
+                "GL_SILENCE_DEPRECATION"
+            ],
             "compilerPath": "/usr/bin/clang++",
             "cStandard": "c11",
             "cppStandard": "c++17",
@@ -21,7 +24,9 @@
             "browse": {
                 "path": [
                     "${workspaceFolder}",
-                    "/opt/homebrew/include"
+                    "/opt/homebrew/include",
+                    "/opt/homebrew/Cellar/glfw/3.4/include",
+                    "/opt/homebrew/Cellar/glm/1.0.1/include"
                 ],
                 "limitSymbolsToIncludedHeaders": true
             }

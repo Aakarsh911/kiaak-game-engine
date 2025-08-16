@@ -77,10 +77,20 @@ Thumbs.db
 
 # Dependencies
 /vendor/
-/external/
+/external/*
+!/external/.gitkeep
 /third-party/
 
 # Logs and databases
 *.log
 *.sql
 *.sqlite
+
+# Core dumps
+core
+
+# Project specific build artifacts
+compile_commands.json
+
+# Keep shader files
+!assets/shaders/*

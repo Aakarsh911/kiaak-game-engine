@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Core/Window.hpp"
+#include "Graphics/Renderer.hpp"
 #include <memory>
 
 namespace Kiaak {
@@ -17,6 +18,7 @@ public:
 private:
     bool isRunning;
     std::unique_ptr<Window> window;
+    std::unique_ptr<Renderer> renderer;
 };
 
 } // namespace Kiaak

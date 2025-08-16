@@ -19,12 +19,19 @@ add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
 # Include directories
 target_include_directories(${PROJECT_NAME} PRIVATE include)
 target_include_directories(${PROJECT_NAME} PRIVATE /opt/homebrew/Cellar/glfw/3.4/include)
+target_include_directories(${PROJECT_NAME} PRIVATE /opt/homebrew/Cellar/glm/1.0.1/include)
 
 # Link directories
 target_link_directories(${PROJECT_NAME} PRIVATE /opt/homebrew/Cellar/glfw/3.4/lib)
 
+# Find OpenGL
+find_package(OpenGL REQUIRED)
+
 # Link libraries
-target_link_libraries(${PROJECT_NAME} PRIVATE glfw)
+target_link_libraries(${PROJECT_NAME} PRIVATE 
+    glfw
+    OpenGL::GL
+)
 
 # Add compiler warnings
 if(MSVC)

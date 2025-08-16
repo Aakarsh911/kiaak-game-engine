@@ -18,22 +18,38 @@ bool Engine::Initialize() {
         return false;
     }
 
+    // Create and initialize renderer
+    renderer = std::make_unique<Renderer>();
+    if (!renderer->Initialize(*window)) {
+        return false;
+    }
+
     isRunning = true;
     return true;
 }
 
 void Engine::Run() {
     while (isRunning && !window->ShouldClose()) {
-        // Update window
-        window->Update();
+        // Begin frame
+        renderer->BeginFrame();
+        
+        // Clear screen with dark gray color
+        renderer->Clear(0.2f, 0.2f, 0.2f);
 
         // Main game loop will go here
+
+        // End frame
+        renderer->EndFrame();
+        
+        // Update window
+        window->Update();
     }
 }
 
 void Engine::Shutdown() {
     if (isRunning) {
         std::cout << "Shutting down Kiaak Engine..." << std::endl;
+        renderer.reset();
         window.reset();
         isRunning = false;
     }
