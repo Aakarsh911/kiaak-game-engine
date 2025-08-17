@@ -12,6 +12,7 @@ public:
     ~Shader();
 
     bool LoadFromFile(const std::string& vertexPath, const std::string& fragmentPath);
+    bool LoadFromString(const std::string& vertexSource, const std::string& fragmentSource);
     void Use();
 
     // Uniform setters

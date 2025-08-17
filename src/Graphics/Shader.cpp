@@ -72,6 +72,36 @@ bool Shader::LoadFromFile(const std::string& vertexPath, const std::string& frag
     return true;
 }
 
+bool Shader::LoadFromString(const std::string& vertexSource, const std::string& fragmentSource) {
+    std::cout << "Loading shader from string..." << std::endl;
+    
+    unsigned int vertexShader, fragmentShader;
+    if (!CompileShader(vertexSource, GL_VERTEX_SHADER, vertexShader) ||
+        !CompileShader(fragmentSource, GL_FRAGMENT_SHADER, fragmentShader)) {
+        return false;
+    }
+
+    // Attach shaders to the program
+    glAttachShader(programID, vertexShader);
+    glAttachShader(programID, fragmentShader);
+
+    // Link the program
+    glLinkProgram(programID);
+
+    // Check for linking errors
+    if (!CheckProgramErrors(programID)) {
+        return false;
+    }
+
+    // Clean up shaders
+    glDeleteShader(vertexShader);
+    glDeleteShader(fragmentShader);
+
+    isCompiled = true;
+    std::cout << "Shader loaded successfully from string!" << std::endl;
+    return true;
+}
+
 void Shader::Use() {
     if (isCompiled) {
         glUseProgram(programID);

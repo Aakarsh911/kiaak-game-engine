@@ -30,6 +30,9 @@ bool Engine::Initialize() {
     // Initialize input system
     Input::Initialize(window->GetNativeWindow());
 
+    // Create high-level sprite demo
+    CreateSpriteDemo();
+
     isRunning = true;
     std::cout << "Kiaak Engine initialized successfully!" << std::endl;
     return true;
@@ -110,11 +113,27 @@ void Engine::Render() {
     // Clear screen with dark gray color
     renderer->Clear(0.2f, 0.2f, 0.2f);
 
-    // Render game objects here
-    // (This will be expanded when we add the ECS system)
+    // High-level sprite rendering - clean and simple!
+    if (demoSprite) {
+        demoSprite->Draw();
+    }
 
     // End frame
     renderer->EndFrame();
+}
+
+void Engine::CreateSpriteDemo() {
+    std::cout << "Creating high-level sprite demo..." << std::endl;
+    
+    // This is how easy it is for game developers!
+    // Just one line to create a sprite from an image
+    demoSprite = std::make_unique<Sprite>("assets/image.jpg");
+    
+    // Easy transforms - no manual matrix math!
+    demoSprite->SetPosition(0.0f, 0.0f);  // Center of screen
+    demoSprite->SetScale(0.8f);           // Scale down a bit so we can see the whole image
+    
+    std::cout << "Sprite demo created! No manual OpenGL calls needed!" << std::endl;
 }
 
 void Engine::Shutdown() {
