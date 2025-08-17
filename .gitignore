@@ -94,3 +94,11 @@ compile_commands.json
 
 # Keep shader files
 !assets/shaders/*
+
+# Keep source files
+!src/
+!src/*/
+!src/**/*
+!include/
+!include/*/
+!include/**/*
