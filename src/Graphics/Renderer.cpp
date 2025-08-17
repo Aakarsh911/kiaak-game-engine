@@ -1,4 +1,6 @@
 #include "Graphics/Renderer.hpp"
+#include <glad/glad.h>
+#include <GLFW/glfw3.h>
 #include <iostream>
 
 namespace Kiaak {
@@ -11,6 +13,18 @@ Renderer::~Renderer() {
 
 bool Renderer::Initialize(const Window& window) {
     targetWindow = &window;
+    
+    // Initialize GLAD - this loads OpenGL function pointers
+    std::cout << "Initializing GLAD..." << std::endl;
+    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
+        std::cerr << "Failed to initialize GLAD" << std::endl;
+        return false;
+    }
+    std::cout << "GLAD initialized successfully!" << std::endl;
+    
+    // Print OpenGL information
+    std::cout << "OpenGL Version: " << glGetString(GL_VERSION) << std::endl;
+    std::cout << "OpenGL Renderer: " << glGetString(GL_RENDERER) << std::endl;
     
     if (!InitializeOpenGL()) {
         std::cerr << "Failed to initialize OpenGL" << std::endl;

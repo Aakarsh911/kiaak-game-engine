@@ -13,11 +13,15 @@ pkg_check_modules(GLFW REQUIRED glfw3)
 file(GLOB_RECURSE SOURCES "src/*.cpp")
 file(GLOB_RECURSE HEADERS "include/*.hpp")
 
+# Add GLAD source
+set(GLAD_SOURCES external/glad/src/glad.c)
+
 # Create the executable
-add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
+add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS} ${GLAD_SOURCES})
 
 # Include directories
 target_include_directories(${PROJECT_NAME} PRIVATE include)
+target_include_directories(${PROJECT_NAME} PRIVATE external/glad/include)
 target_include_directories(${PROJECT_NAME} PRIVATE /opt/homebrew/Cellar/glfw/3.4/include)
 target_include_directories(${PROJECT_NAME} PRIVATE /opt/homebrew/Cellar/glm/1.0.1/include)
 
