@@ -1,6 +1,7 @@
 #include "Graphics/SpriteRenderer.hpp"
 #include "Core/GameObject.hpp"
 #include "Core/Transform.hpp"
+#include "Core/Camera.hpp"
 #include <glad/glad.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include <iostream>
@@ -12,7 +13,7 @@ std::shared_ptr<Shader>  SpriteRenderer::s_spriteShader   = nullptr;
 std::shared_ptr<Texture> SpriteRenderer::s_defaultTexture = nullptr;
 int SpriteRenderer::s_rendererCount = 0;
 
-static constexpr float PPU = 100.0f; // pixels per world unit
+static constexpr float PPU = 100.0f;
 
 SpriteRenderer::SpriteRenderer() {
     s_rendererCount++;
@@ -34,7 +35,8 @@ void SpriteRenderer::SetTexture(const std::string& texturePath) {
     try {
         m_texture = std::make_shared<Texture>(texturePath);
         if (m_texture && m_size == glm::vec2(1.0f)) {
-            m_size = glm::vec2(m_texture->GetWidth(), m_texture->GetHeight()); // Direct pixel size, no PPU division
+            // Size defaults to texture pixel size
+            m_size = glm::vec2(m_texture->GetWidth(), m_texture->GetHeight());
         }
     } catch (const std::exception& e) {
         std::cerr << "Failed to load texture: " << texturePath << " - " << e.what() << std::endl;
@@ -45,7 +47,7 @@ void SpriteRenderer::SetTexture(const std::string& texturePath) {
 void SpriteRenderer::SetTexture(std::shared_ptr<Texture> texture) {
     m_texture = texture;
     if (m_texture && m_size == glm::vec2(1.0f)) {
-        m_size = glm::vec2(m_texture->GetWidth(), m_texture->GetHeight()); // Direct pixel size, no PPU division
+        m_size = glm::vec2(m_texture->GetWidth(), m_texture->GetHeight());
     }
 }
 
@@ -61,6 +63,7 @@ void SpriteRenderer::Render() {
 
     s_spriteShader->Use();
 
+    // Build model matrix from Transform + explicit sprite size
     glm::mat4 model(1.0f);
     const glm::vec3 pos   = transform->GetPosition();
     const glm::vec3 rot   = transform->GetRotation();
@@ -68,17 +71,22 @@ void SpriteRenderer::Render() {
 
     model = glm::translate(model, pos);
     model = glm::rotate(model, glm::radians(rot.z), glm::vec3(0.0f, 0.0f, 1.0f));
-    model = glm::scale(model, glm::vec3(m_size, 1.0f)); // size in world units
+    model = glm::scale(model, glm::vec3(m_size, 1.0f));
     model = glm::scale(model, scale);
 
-    GLint vp[4];
-    glGetIntegerv(GL_VIEWPORT, vp);
-    float w = static_cast<float>(vp[2]);
-    float h = static_cast<float>(vp[3]);
+    // If we have an active camera, use its VP; otherwise use screen-space ortho
+    glm::mat4 VP(1.0f);
+    if (auto* cam = Core::Camera::GetActive()) {
+        VP = cam->GetViewProjection();
+    } else {
+        GLint vp[4];
+        glGetIntegerv(GL_VIEWPORT, vp);
+        float w = static_cast<float>(vp[2]);
+        float h = static_cast<float>(vp[3]);
+        VP = glm::ortho(-w * 0.5f, w * 0.5f, -h * 0.5f, h * 0.5f, -1.0f, 1.0f);
+    }
 
-    glm::mat4 proj = glm::ortho(-w * 0.5f, w * 0.5f, -h * 0.5f, h * 0.5f, -1.0f, 1.0f);
-
-    s_spriteShader->SetMat4("transform", proj * model);
+    s_spriteShader->SetMat4("transform", VP * model);
 
     auto textureToUse = m_texture ? m_texture : s_defaultTexture;
     if (textureToUse) {

@@ -1,10 +1,12 @@
+// Engine.cpp
 #include "Engine.hpp"
 #include "Graphics/SpriteRenderer.hpp"
+#include "Core/Camera.hpp"          // ← added
 #include <iostream>
 
 namespace Kiaak {
 
-Engine::Engine() : isRunning(false) {}
+Engine::Engine() : isRunning(false), firstCamera(nullptr), secondCamera(nullptr) {}
 
 Engine::~Engine() {
     Shutdown();
@@ -72,6 +74,10 @@ void Engine::ProcessInput() {
         isRunning = false;
     }
 
+    // Handle camera switching with '2' key
+    if (Input::IsKeyPressed(GLFW_KEY_2)) {
+        SwitchToSecondCamera();
+    }
 
     Input::Update();
 }
@@ -103,9 +109,9 @@ void Engine::Render() {
     renderer->BeginFrame();
     
     // Clear screen with bright blue color to see window boundaries
-    renderer->Clear(0.2f, 0.4f, 0.8f);
+    renderer->Clear(0.2f, 0.4f, 0.8f, 1.0f);
 
-    // Render the scene (includes both legacy sprites and GameObjects)
+    // Render the scene (includes GameObjects with SpriteRenderer)
     if (currentScene) {
         currentScene->Render();
     }
@@ -117,11 +123,52 @@ void Engine::Render() {
 void Engine::CreateGameObjectDemo() {
     std::cout << "Creating high-level sprite demo..." << std::endl;
     
-    auto imageObject = CreateGameObject("ImageSprite");
-    auto imageRenderer = imageObject->AddComponent<Graphics::SpriteRenderer>("assets/background.png");
-    
+    // First background sprite
+    auto* imageObject   = CreateGameObject("ImageSprite");
+    auto* imageRenderer = imageObject->AddComponent<Graphics::SpriteRenderer>("assets/background.png");
+    (void)imageRenderer; // not used after creation
+
     imageObject->GetTransform()->SetPosition(0.0f, 0.0f, 0.0f);
     imageObject->GetTransform()->SetScale(1.0f);
+
+    // First camera that looks at the background (in XY plane at Z=0)
+    auto* camGO = CreateGameObject("MainCamera");
+    auto* cam   = camGO->AddComponent<Core::Camera>();
+    camGO->GetTransform()->SetPosition(0.0f, 0.0f, 1.0f); // in front, looking toward -Z
+    cam->SetZoom(3.0f);
+    cam->SetActive(); // make this the active camera
+    
+    // Store reference to first camera
+    firstCamera = cam;
+
+    // Second sprite at a different position
+    auto* imageObject2   = CreateGameObject("ImageSprite2");
+    auto* imageRenderer2 = imageObject2->AddComponent<Graphics::SpriteRenderer>("assets/image.jpg");
+    (void)imageRenderer2; // not used after creation
+
+    imageObject2->GetTransform()->SetPosition(500.0f, 300.0f, 0.0f); // Different position
+    imageObject2->GetTransform()->SetScale(0.8f); // Slightly smaller
+
+    // Second camera that looks at the second sprite
+    auto* camGO2 = CreateGameObject("SecondCamera");
+    auto* cam2   = camGO2->AddComponent<Core::Camera>();
+    camGO2->GetTransform()->SetPosition(500.0f, 300.0f, 1.0f); // Position above second sprite
+    cam2->SetZoom(2.0f); // Different zoom level
+    
+    // Store reference to second camera
+    secondCamera = cam2;
+    
+    std::cout << "Created two sprites and two cameras. Press '2' to switch to second camera." << std::endl;
+}
+
+void Engine::SwitchToSecondCamera() {
+    if (secondCamera) {
+        // Set the second camera as the active camera
+        secondCamera->SetActive();
+        std::cout << "Switched to second camera!" << std::endl;
+    } else {
+        std::cout << "Second camera not available!" << std::endl;
+    }
 }
 
 // GameObject API implementation

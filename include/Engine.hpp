@@ -9,6 +9,10 @@
 
 namespace Kiaak {
 
+namespace Core {
+    class Camera; // Forward declaration
+}
+
 class Engine {
 public:
     Engine();
@@ -38,6 +42,10 @@ private:
     // Scene management
     std::unique_ptr<Core::Scene> currentScene;
     
+    // Camera references for switching
+    Core::Camera* firstCamera;
+    Core::Camera* secondCamera;
+    
     // Game loop functions
     void ProcessInput();
     void Update(double deltaTime);
@@ -46,6 +54,9 @@ private:
     
     // Demo creation (can be removed later when we have scene loading)
     void CreateGameObjectDemo();
+    
+    // Camera switching
+    void SwitchToSecondCamera();
 };
 
 } // namespace Kiaak
