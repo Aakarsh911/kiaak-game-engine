@@ -1,20 +1,12 @@
 #version 330 core
-
-// Input vertex data
 layout (location = 0) in vec2 aPos;
-layout (location = 1) in vec2 aTexCoord;
+layout (location = 1) in vec2 aUV;
 
-// Output data that will be passed to fragment shader
-out vec2 TexCoord;
+uniform mat4 transform;   // proj * model
 
-// Uniforms for transformations
-uniform mat4 u_model;
+out vec2 vUV;
 
-void main()
-{
-    // Calculate final position - just use model matrix (normalized device coordinates)
-    gl_Position = u_model * vec4(aPos, 0.0, 1.0);
-    
-    // Pass texture coordinates to fragment shader
-    TexCoord = aTexCoord;
+void main() {
+    vUV = aUV;
+    gl_Position = transform * vec4(aPos, 0.0, 1.0);
 }

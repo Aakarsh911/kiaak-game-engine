@@ -123,8 +123,8 @@ void Engine::Render() {
     // Begin frame
     renderer->BeginFrame();
     
-    // Clear screen with dark gray color
-    renderer->Clear(0.2f, 0.2f, 0.2f);
+    // Clear screen with black color instead of gray
+    renderer->Clear(0.0f, 0.0f, 0.0f);
 
     // Render the scene (includes both legacy sprites and GameObjects)
     if (currentScene) {
@@ -136,16 +136,17 @@ void Engine::Render() {
 }
 
 void Engine::CreateGameObjectDemo() {
-    std::cout << "Creating simple large rectangle test..." << std::endl;
+    std::cout << "Creating high-level sprite demo..." << std::endl;
     
-    // Create one large red rectangle that should fill most of the screen
-    auto testObject = CreateGameObject("TestRectangle");
-    auto testRenderer = testObject->AddComponent<Graphics::SpriteRenderer>(); // No texture
-    testObject->GetTransform()->SetPosition(0.0f, 0.0f, 0.0f); // Center
-    testObject->GetTransform()->SetScale(1.8f); // Large scale
-    testRenderer->SetColor(1.0f, 0.0f, 0.0f, 1.0f); // Bright red
+    // Create a simple centered image sprite (like original)
+    auto imageObject = CreateGameObject("ImageSprite");
+    auto imageRenderer = imageObject->AddComponent<Graphics::SpriteRenderer>("assets/image.png");
     
-    std::cout << "Large red rectangle test created! Total GameObjects: " << GetGameObjectCount() << std::endl;
+    // Easy transforms - no manual matrix math! (like original)
+    imageObject->GetTransform()->SetPosition(0.0f, 0.0f, 0.0f);  // Center of screen
+    imageObject->GetTransform()->SetScale(1.0f);                 // Original size (600x360 pixels)
+    
+    std::cout << "Original size sprite demo created (600x360 pixels)! No manual OpenGL calls needed!" << std::endl;
 }
 
 // GameObject API implementation
