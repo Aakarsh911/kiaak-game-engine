@@ -30,7 +30,10 @@ bool Engine::Initialize() {
     // Initialize input system
     Input::Initialize(window->GetNativeWindow());
 
-    // Create high-level sprite demo
+    // Create scene for sprite management
+    currentScene = std::make_unique<Core::Scene>();
+
+    // Create demo sprites
     CreateSpriteDemo();
 
     isRunning = true;
@@ -76,15 +79,15 @@ void Engine::ProcessInput() {
         isRunning = false;
     }
     
-    // Example input handling (you can remove this later)
+    // Example input handling
     if (Input::IsKeyPressed(GLFW_KEY_SPACE)) {
-        std::cout << "Space pressed!" << std::endl;
+        std::cout << "✅ Space key pressed!" << std::endl;
     }
     
     if (Input::IsMouseButtonPressed(MouseButton::Left)) {
         double x, y;
         Input::GetMousePosition(x, y);
-        std::cout << "Left mouse clicked at: " << x << ", " << y << std::endl;
+        std::cout << "✅ Mouse click at: " << x << ", " << y << std::endl;
     }
 }
 
@@ -113,9 +116,9 @@ void Engine::Render() {
     // Clear screen with dark gray color
     renderer->Clear(0.2f, 0.2f, 0.2f);
 
-    // High-level sprite rendering - clean and simple!
-    if (demoSprite) {
-        demoSprite->Draw();
+    // Render all sprites in the scene
+    if (currentScene) {
+        currentScene->RenderAll();
     }
 
     // End frame
@@ -123,22 +126,75 @@ void Engine::Render() {
 }
 
 void Engine::CreateSpriteDemo() {
-    std::cout << "Creating high-level sprite demo..." << std::endl;
+    std::cout << "Creating sprite demo..." << std::endl;
     
-    // This is how easy it is for game developers!
-    // Just one line to create a sprite from an image
-    demoSprite = std::make_unique<Sprite>("assets/image.jpg");
+    // Background sprite (layer 0 - renders first)
+    auto background = CreateSprite("background", "../assets/image.jpg");
+    background->SetPosition(0.0f, 0.5f);  // Top
+    background->SetScale(0.2f);
+    SetSpriteLayer("background", 0);
     
-    // Easy transforms - no manual matrix math!
-    demoSprite->SetPosition(0.0f, 0.0f);  // Center of screen
-    demoSprite->SetScale(0.8f);           // Scale down a bit so we can see the whole image
+    // Main sprite (layer 1 - renders on top of background)
+    auto mainSprite = CreateSprite("main", "../assets/image2.jpg");
+    mainSprite->SetPosition(0.0f, 0.0f);  // Center
+    mainSprite->SetScale(0.2f);
+    SetSpriteLayer("main", 1);
     
-    std::cout << "Sprite demo created! No manual OpenGL calls needed!" << std::endl;
+    // Foreground sprite (layer 2 - renders on top)
+    auto foreground = CreateSprite("foreground", "../assets/image3.jpg");
+    foreground->SetPosition(0.0f, -0.5f);  // Bottom
+    foreground->SetScale(0.2f);
+    SetSpriteLayer("foreground", 2);
+    
+    std::cout << "Sprite demo created! Total sprites: " << GetSpriteCount() << std::endl;
+    std::cout << "Rendering order: background -> main -> foreground" << std::endl;
+}
+
+// Public API implementation
+Kiaak::Sprite* Engine::CreateSprite(const std::string& id, const std::string& texturePath) {
+    if (!currentScene) {
+        std::cout << "Error: No scene available for sprite creation" << std::endl;
+        return nullptr;
+    }
+    return currentScene->CreateSprite(id, texturePath);
+}
+
+Kiaak::Sprite* Engine::GetSprite(const std::string& id) {
+    if (!currentScene) {
+        return nullptr;
+    }
+    return currentScene->GetSprite(id);
+}
+
+bool Engine::RemoveSprite(const std::string& id) {
+    if (!currentScene) {
+        return false;
+    }
+    return currentScene->RemoveSprite(id);
+}
+
+void Engine::SetSpriteLayer(const std::string& id, int layer) {
+    if (currentScene) {
+        currentScene->SetSpriteLayer(id, layer);
+    }
+}
+
+size_t Engine::GetSpriteCount() const {
+    return currentScene ? currentScene->GetSpriteCount() : 0;
+}
+
+std::vector<std::string> Engine::GetSpriteIds() const {
+    return currentScene ? currentScene->GetSpriteIds() : std::vector<std::string>();
 }
 
 void Engine::Shutdown() {
     if (isRunning) {
         std::cout << "Shutting down Kiaak Engine..." << std::endl;
+        
+        // Clear scene first
+        currentScene.reset();
+        
+        // Then shutdown core systems
         renderer.reset();
         window.reset();
         isRunning = false;
