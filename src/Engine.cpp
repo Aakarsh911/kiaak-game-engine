@@ -70,9 +70,6 @@ void Engine::Run() {
 }
 
 void Engine::ProcessInput() {
-    // Update input system
-    Input::Update();
-    
     // Handle ESC key to close engine
     if (Input::IsKeyPressed(GLFW_KEY_ESCAPE)) {
         std::cout << "ESC pressed - shutting down engine" << std::endl;
@@ -89,6 +86,9 @@ void Engine::ProcessInput() {
         Input::GetMousePosition(x, y);
         std::cout << "✅ Mouse click at: " << x << ", " << y << std::endl;
     }
+    
+    // Update input system AFTER processing input
+    Input::Update();
 }
 
 void Engine::Update(double deltaTime) {
