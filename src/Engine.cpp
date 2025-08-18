@@ -12,32 +12,28 @@ Engine::~Engine() {
 
 bool Engine::Initialize() {
     std::cout << "Initializing Kiaak Engine..." << std::endl;
-    
-    // Create and initialize window
+
+    // Create and initialize core components
     window = std::make_unique<Window>(800, 600, "Kiaak Engine");
     if (!window->Initialize()) {
         return false;
     }
 
-    // Create and initialize renderer
     renderer = std::make_unique<Renderer>();
     if (!renderer->Initialize(*window)) {
         return false;
     }
 
-    // Create timer
     timer = std::make_unique<Timer>();
 
-    // Initialize input system
     Input::Initialize(window->GetNativeWindow());
 
-    // Create scene for GameObject management
     currentScene = std::make_unique<Core::Scene>();
 
     // Create demo GameObjects
     CreateGameObjectDemo();
     
-    // Start the scene (initializes all GameObjects)
+    // Start the scene
     if (currentScene) {
         currentScene->Start();
     }
@@ -51,10 +47,7 @@ void Engine::Run() {
     std::cout << "Starting main game loop..." << std::endl;
     
     while (isRunning && !window->ShouldClose()) {
-        // Update timer
         timer->update(); 
-        
-        // Process input
         ProcessInput();
         
         // Fixed timestep updates (physics, etc.)
@@ -64,11 +57,8 @@ void Engine::Run() {
         
         // Variable timestep update (rendering, animations)
         Update(timer->getDeltaTime());
-        
-        // Render frame
+
         Render();
-        
-        // Update window
         window->Update();
     }
     
@@ -81,19 +71,8 @@ void Engine::ProcessInput() {
         std::cout << "ESC pressed - shutting down engine" << std::endl;
         isRunning = false;
     }
-    
-    // Example input handling
-    if (Input::IsKeyPressed(GLFW_KEY_SPACE)) {
-        std::cout << "✅ Space key pressed!" << std::endl;
-    }
-    
-    if (Input::IsMouseButtonPressed(MouseButton::Left)) {
-        double x, y;
-        Input::GetMousePosition(x, y);
-        std::cout << "✅ Mouse click at: " << x << ", " << y << std::endl;
-    }
-    
-    // Update input system AFTER processing input
+
+
     Input::Update();
 }
 
@@ -123,8 +102,8 @@ void Engine::Render() {
     // Begin frame
     renderer->BeginFrame();
     
-    // Clear screen with black color instead of gray
-    renderer->Clear(0.0f, 0.0f, 0.0f);
+    // Clear screen with bright blue color to see window boundaries
+    renderer->Clear(0.2f, 0.4f, 0.8f);
 
     // Render the scene (includes both legacy sprites and GameObjects)
     if (currentScene) {
@@ -138,15 +117,11 @@ void Engine::Render() {
 void Engine::CreateGameObjectDemo() {
     std::cout << "Creating high-level sprite demo..." << std::endl;
     
-    // Create a simple centered image sprite (like original)
     auto imageObject = CreateGameObject("ImageSprite");
-    auto imageRenderer = imageObject->AddComponent<Graphics::SpriteRenderer>("assets/image.png");
+    auto imageRenderer = imageObject->AddComponent<Graphics::SpriteRenderer>("assets/background.png");
     
-    // Easy transforms - no manual matrix math! (like original)
-    imageObject->GetTransform()->SetPosition(0.0f, 0.0f, 0.0f);  // Center of screen
-    imageObject->GetTransform()->SetScale(1.0f);                 // Original size (600x360 pixels)
-    
-    std::cout << "Original size sprite demo created (600x360 pixels)! No manual OpenGL calls needed!" << std::endl;
+    imageObject->GetTransform()->SetPosition(0.0f, 0.0f, 0.0f);
+    imageObject->GetTransform()->SetScale(1.0f);
 }
 
 // GameObject API implementation
