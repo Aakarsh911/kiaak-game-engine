@@ -6,11 +6,15 @@ in vec2 TexCoord;
 // Output color
 out vec4 FragColor;
 
-// Texture sampler
-uniform sampler2D texture1;
+// Uniforms
+uniform sampler2D u_texture;
+uniform vec4 u_color;
 
 void main()
 {
-    // Output the texture color
-    FragColor = texture(texture1, TexCoord);
+    // Sample texture (will be white if no texture bound)
+    vec4 texColor = texture(u_texture, TexCoord);
+    
+    // Multiply texture color by uniform color for tinting/solid colors
+    FragColor = texColor * u_color;
 }

@@ -1,4 +1,5 @@
 #include "Engine.hpp"
+#include "Graphics/SpriteRenderer.hpp"
 #include <iostream>
 
 namespace Kiaak {
@@ -30,11 +31,16 @@ bool Engine::Initialize() {
     // Initialize input system
     Input::Initialize(window->GetNativeWindow());
 
-    // Create scene for sprite management
+    // Create scene for GameObject management
     currentScene = std::make_unique<Core::Scene>();
 
-    // Create demo sprites
-    CreateSpriteDemo();
+    // Create demo GameObjects
+    CreateGameObjectDemo();
+    
+    // Start the scene (initializes all GameObjects)
+    if (currentScene) {
+        currentScene->Start();
+    }
 
     isRunning = true;
     std::cout << "Kiaak Engine initialized successfully!" << std::endl;
@@ -92,8 +98,10 @@ void Engine::ProcessInput() {
 }
 
 void Engine::Update(double deltaTime) {
-    // Update game logic that depends on frame time
-    // Examples: animations, smooth movements, camera transitions
+    // Update the scene (calls Update on all GameObjects)
+    if (currentScene) {
+        currentScene->Update(deltaTime);
+    }
     
     // Debug output every second
     static double timeAccumulator = 0.0;
@@ -105,8 +113,10 @@ void Engine::Update(double deltaTime) {
 }
 
 void Engine::FixedUpdate(double fixedDeltaTime) {
-    // Update systems that need consistent timing
-    // Examples: physics, collision detection, game logic
+    // Update the scene at fixed timestep (calls FixedUpdate on all GameObjects)
+    if (currentScene) {
+        currentScene->FixedUpdate(fixedDeltaTime);
+    }
 }
 
 void Engine::Render() {
@@ -116,75 +126,67 @@ void Engine::Render() {
     // Clear screen with dark gray color
     renderer->Clear(0.2f, 0.2f, 0.2f);
 
-    // Render all sprites in the scene
+    // Render the scene (includes both legacy sprites and GameObjects)
     if (currentScene) {
-        currentScene->RenderAll();
+        currentScene->Render();
     }
 
     // End frame
     renderer->EndFrame();
 }
 
-void Engine::CreateSpriteDemo() {
-    std::cout << "Creating sprite demo..." << std::endl;
+void Engine::CreateGameObjectDemo() {
+    std::cout << "Creating simple large rectangle test..." << std::endl;
     
-    // Background sprite (layer 0 - renders first)
-    auto background = CreateSprite("background", "../assets/image.jpg");
-    background->SetPosition(0.0f, 0.5f);  // Top
-    background->SetScale(0.2f);
-    SetSpriteLayer("background", 0);
+    // Create one large red rectangle that should fill most of the screen
+    auto testObject = CreateGameObject("TestRectangle");
+    auto testRenderer = testObject->AddComponent<Graphics::SpriteRenderer>(); // No texture
+    testObject->GetTransform()->SetPosition(0.0f, 0.0f, 0.0f); // Center
+    testObject->GetTransform()->SetScale(1.8f); // Large scale
+    testRenderer->SetColor(1.0f, 0.0f, 0.0f, 1.0f); // Bright red
     
-    // Main sprite (layer 1 - renders on top of background)
-    auto mainSprite = CreateSprite("main", "../assets/image2.jpg");
-    mainSprite->SetPosition(0.0f, 0.0f);  // Center
-    mainSprite->SetScale(0.2f);
-    SetSpriteLayer("main", 1);
-    
-    // Foreground sprite (layer 2 - renders on top)
-    auto foreground = CreateSprite("foreground", "../assets/image3.jpg");
-    foreground->SetPosition(0.0f, -0.5f);  // Bottom
-    foreground->SetScale(0.2f);
-    SetSpriteLayer("foreground", 2);
-    
-    std::cout << "Sprite demo created! Total sprites: " << GetSpriteCount() << std::endl;
-    std::cout << "Rendering order: background -> main -> foreground" << std::endl;
+    std::cout << "Large red rectangle test created! Total GameObjects: " << GetGameObjectCount() << std::endl;
 }
 
-// Public API implementation
-Kiaak::Sprite* Engine::CreateSprite(const std::string& id, const std::string& texturePath) {
+// GameObject API implementation
+Core::GameObject* Engine::CreateGameObject(const std::string& name) {
     if (!currentScene) {
-        std::cout << "Error: No scene available for sprite creation" << std::endl;
+        std::cout << "Error: No scene available for GameObject creation" << std::endl;
         return nullptr;
     }
-    return currentScene->CreateSprite(id, texturePath);
+    return currentScene->CreateGameObject(name);
 }
 
-Kiaak::Sprite* Engine::GetSprite(const std::string& id) {
+Core::GameObject* Engine::GetGameObject(const std::string& name) {
     if (!currentScene) {
         return nullptr;
     }
-    return currentScene->GetSprite(id);
+    return currentScene->GetGameObject(name);
 }
 
-bool Engine::RemoveSprite(const std::string& id) {
+Core::GameObject* Engine::GetGameObject(uint32_t id) {
+    if (!currentScene) {
+        return nullptr;
+    }
+    return currentScene->GetGameObject(id);
+}
+
+bool Engine::RemoveGameObject(const std::string& name) {
     if (!currentScene) {
         return false;
     }
-    return currentScene->RemoveSprite(id);
+    return currentScene->RemoveGameObject(name);
 }
 
-void Engine::SetSpriteLayer(const std::string& id, int layer) {
-    if (currentScene) {
-        currentScene->SetSpriteLayer(id, layer);
+bool Engine::RemoveGameObject(uint32_t id) {
+    if (!currentScene) {
+        return false;
     }
+    return currentScene->RemoveGameObject(id);
 }
 
-size_t Engine::GetSpriteCount() const {
-    return currentScene ? currentScene->GetSpriteCount() : 0;
-}
-
-std::vector<std::string> Engine::GetSpriteIds() const {
-    return currentScene ? currentScene->GetSpriteIds() : std::vector<std::string>();
+size_t Engine::GetGameObjectCount() const {
+    return currentScene ? currentScene->GetGameObjectCount() : 0;
 }
 
 void Engine::Shutdown() {

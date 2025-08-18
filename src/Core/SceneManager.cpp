@@ -92,7 +92,7 @@ void SceneManager::Update(double deltaTime) {
 
 void SceneManager::Render() {
     if (m_currentScene) {
-        m_currentScene->RenderAll();
+        m_currentScene->Render();
     }
 }
 

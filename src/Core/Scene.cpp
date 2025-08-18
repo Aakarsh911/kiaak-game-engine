@@ -1,4 +1,5 @@
 #include "Core/Scene.hpp"
+#include "Graphics/SpriteRenderer.hpp"
 #include <algorithm>
 #include <iostream>
 
@@ -10,159 +11,174 @@ Scene::Scene() {
 }
 
 Scene::~Scene() {
-    ClearAllSprites();
+    ClearAllGameObjects();
     std::cout << "Scene destroyed" << std::endl;
 }
 
-Kiaak::Sprite* Scene::CreateSprite(const std::string& id, const std::string& texturePath) {
-    // Check if sprite with this ID already exists
-    if (sprites.find(id) != sprites.end()) {
-        std::cout << "Warning: Sprite with ID '" << id << "' already exists. Replacing it." << std::endl;
-        RemoveSprite(id);
+// GameObject management (new component-based system)
+GameObject* Scene::CreateGameObject(const std::string& name) {
+    std::string uniqueName = GenerateUniqueGameObjectName(name);
+    
+    auto gameObject = std::make_unique<GameObject>(uniqueName);
+    GameObject* gameObjectPtr = gameObject.get();
+    
+    // Add to storage
+    uint32_t id = gameObjectPtr->GetID();
+    m_gameObjectsById[id] = gameObjectPtr;
+    m_gameObjectsByName[uniqueName] = gameObjectPtr;
+    m_gameObjects.push_back(std::move(gameObject));
+    
+    // If scene is already started, start this GameObject
+    if (m_started) {
+        gameObjectPtr->Start();
     }
-
-    // Create new sprite
-    auto sprite = std::make_unique<Kiaak::Sprite>(texturePath);
     
-    // Store raw pointer for return
-    Kiaak::Sprite* spritePtr = sprite.get();
-    
-    // Add to containers
-    sprites[id] = std::move(sprite);
-    spriteLayers[id] = 0; // Default layer
-    renderOrderDirty = true;
-    
-    std::cout << "Created sprite '" << id << "' with texture: " << texturePath << std::endl;
-    return spritePtr;
+    std::cout << "Created GameObject '" << uniqueName << "' with ID " << id << std::endl;
+    return gameObjectPtr;
 }
 
-Kiaak::Sprite* Scene::GetSprite(const std::string& id) {
-    auto it = sprites.find(id);
-    if (it != sprites.end()) {
-        return it->second.get();
-    }
-    return nullptr;
+GameObject* Scene::GetGameObject(const std::string& name) {
+    auto it = m_gameObjectsByName.find(name);
+    return (it != m_gameObjectsByName.end()) ? it->second : nullptr;
 }
 
-bool Scene::RemoveSprite(const std::string& id) {
-    auto spriteIt = sprites.find(id);
-    auto layerIt = spriteLayers.find(id);
-    
-    if (spriteIt != sprites.end()) {
-        sprites.erase(spriteIt);
-        if (layerIt != spriteLayers.end()) {
-            spriteLayers.erase(layerIt);
-        }
-        renderOrderDirty = true;
-        std::cout << "Removed sprite '" << id << "'" << std::endl;
-        return true;
+GameObject* Scene::GetGameObject(uint32_t id) {
+    auto it = m_gameObjectsById.find(id);
+    return (it != m_gameObjectsById.end()) ? it->second : nullptr;
+}
+
+bool Scene::RemoveGameObject(const std::string& name) {
+    auto it = m_gameObjectsByName.find(name);
+    if (it != m_gameObjectsByName.end()) {
+        return RemoveGameObject(it->second);
     }
-    
-    std::cout << "Warning: Sprite '" << id << "' not found for removal" << std::endl;
     return false;
 }
 
-void Scene::ClearAllSprites() {
-    size_t count = sprites.size();
-    sprites.clear();
-    spriteLayers.clear();
-    renderOrder.clear();
-    renderOrderDirty = true;
+bool Scene::RemoveGameObject(uint32_t id) {
+    auto it = m_gameObjectsById.find(id);
+    if (it != m_gameObjectsById.end()) {
+        return RemoveGameObject(it->second);
+    }
+    return false;
+}
+
+bool Scene::RemoveGameObject(GameObject* gameObject) {
+    if (!gameObject) return false;
+    
+    auto it = std::find_if(m_gameObjects.begin(), m_gameObjects.end(),
+        [gameObject](const std::unique_ptr<GameObject>& ptr) {
+            return ptr.get() == gameObject;
+        });
+    
+    if (it != m_gameObjects.end()) {
+        uint32_t id = gameObject->GetID();
+        std::string name = gameObject->GetName();
+        
+        // Remove from maps
+        m_gameObjectsById.erase(id);
+        m_gameObjectsByName.erase(name);
+        
+        // Remove from vector
+        m_gameObjects.erase(it);
+        
+        std::cout << "Removed GameObject '" << name << "' with ID " << id << std::endl;
+        return true;
+    }
+    
+    return false;
+}
+
+void Scene::ClearAllGameObjects() {
+    size_t count = m_gameObjects.size();
+    m_gameObjects.clear();
+    m_gameObjectsByName.clear();
+    m_gameObjectsById.clear();
     
     if (count > 0) {
-        std::cout << "Cleared " << count << " sprites from scene" << std::endl;
+        std::cout << "Cleared " << count << " GameObjects from scene" << std::endl;
     }
 }
 
-void Scene::RenderAll() {
-    if (sprites.empty()) {
-        return;
+std::vector<GameObject*> Scene::GetAllGameObjects() {
+    std::vector<GameObject*> result;
+    result.reserve(m_gameObjects.size());
+    
+    for (auto& gameObject : m_gameObjects) {
+        result.push_back(gameObject.get());
     }
     
-    // Update render order if needed
-    if (renderOrderDirty) {
-        UpdateRenderOrder();
+    return result;
+}
+
+std::vector<GameObject*> Scene::GetGameObjectsWithName(const std::string& name) {
+    std::vector<GameObject*> result;
+    
+    for (auto& gameObject : m_gameObjects) {
+        if (gameObject->GetName() == name) {
+            result.push_back(gameObject.get());
+        }
     }
     
-    // Render sprites in layer order
-    for (const std::string& spriteId : renderOrder) {
-        auto it = sprites.find(spriteId);
-        if (it != sprites.end()) {
-            it->second->Draw();
+    return result;
+}
+
+size_t Scene::GetGameObjectCount() const {
+    return m_gameObjects.size();
+}
+
+// Scene lifecycle
+void Scene::Start() {
+    if (m_started) return;
+    
+    for (auto& gameObject : m_gameObjects) {
+        if (gameObject->IsActive()) {
+            gameObject->Start();
+        }
+    }
+    
+    m_started = true;
+    std::cout << "Scene started with " << m_gameObjects.size() << " GameObjects" << std::endl;
+}
+
+void Scene::Update(double deltaTime) {
+    for (auto& gameObject : m_gameObjects) {
+        if (gameObject->IsActive()) {
+            gameObject->Update(deltaTime);
         }
     }
 }
 
-void Scene::SetSpriteLayer(const std::string& id, int layer) {
-    if (sprites.find(id) != sprites.end()) {
-        spriteLayers[id] = layer;
-        renderOrderDirty = true;
-        std::cout << "Set sprite '" << id << "' to layer " << layer << std::endl;
-    } else {
-        std::cout << "Warning: Cannot set layer for non-existent sprite '" << id << "'" << std::endl;
+void Scene::FixedUpdate(double fixedDeltaTime) {
+    for (auto& gameObject : m_gameObjects) {
+        if (gameObject->IsActive()) {
+            gameObject->FixedUpdate(fixedDeltaTime);
+        }
     }
 }
 
-int Scene::GetSpriteLayer(const std::string& id) const {
-    auto it = spriteLayers.find(id);
-    return (it != spriteLayers.end()) ? it->second : 0;
-}
-
-size_t Scene::GetSpriteCount() const {
-    return sprites.size();
-}
-
-std::vector<std::string> Scene::GetSpriteIds() const {
-    std::vector<std::string> ids;
-    ids.reserve(sprites.size());
-    
-    for (const auto& pair : sprites) {
-        ids.push_back(pair.first);
+void Scene::Render() {
+    // Render GameObjects with SpriteRenderer components
+    for (auto& gameObject : m_gameObjects) {
+        if (gameObject->IsActive()) {
+            auto* spriteRenderer = gameObject->GetComponent<Graphics::SpriteRenderer>();
+            if (spriteRenderer && spriteRenderer->IsEnabled()) {
+                spriteRenderer->Render();
+            }
+        }
     }
-    
-    return ids;
 }
 
-bool Scene::HasSprite(const std::string& id) const {
-    return sprites.find(id) != sprites.end();
-}
-
-void Scene::UpdateRenderOrder() const {
-    renderOrder.clear();
-    renderOrder.reserve(sprites.size());
-    
-    // Collect all sprite IDs with their layers
-    std::vector<std::pair<std::string, int>> spriteLayerPairs;
-    for (const auto& spritePair : sprites) {
-        const std::string& id = spritePair.first;
-        int layer = GetSpriteLayer(id);
-        spriteLayerPairs.emplace_back(id, layer);
-    }
-    
-    // Sort by layer (lower layers render first)
-    std::sort(spriteLayerPairs.begin(), spriteLayerPairs.end(),
-        [](const auto& a, const auto& b) {
-            return a.second < b.second;
-        });
-    
-    // Extract sorted IDs
-    for (const auto& pair : spriteLayerPairs) {
-        renderOrder.push_back(pair.first);
-    }
-    
-    renderOrderDirty = false;
-}
-
-std::string Scene::GenerateUniqueId(const std::string& baseName) const {
-    std::string id = baseName;
+std::string Scene::GenerateUniqueGameObjectName(const std::string& baseName) const {
+    std::string name = baseName;
     int counter = 1;
     
-    while (HasSprite(id)) {
-        id = baseName + "_" + std::to_string(counter);
+    while (m_gameObjectsByName.find(name) != m_gameObjectsByName.end()) {
+        name = baseName + "_" + std::to_string(counter);
         counter++;
     }
     
-    return id;
+    return name;
 }
 
 } // namespace Core

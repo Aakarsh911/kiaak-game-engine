@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Graphics/Sprite.hpp"
+#include "GameObject.hpp"
 #include <memory>
 #include <unordered_map>
 #include <vector>
@@ -14,38 +14,37 @@ public:
     Scene();
     ~Scene();
 
-    // Sprite management
-    Kiaak::Sprite* CreateSprite(const std::string& id, const std::string& texturePath);
-    Kiaak::Sprite* GetSprite(const std::string& id);
-    bool RemoveSprite(const std::string& id);
-    void ClearAllSprites();
+    // GameObject management (new component-based system)
+    GameObject* CreateGameObject(const std::string& name = "GameObject");
+    GameObject* GetGameObject(const std::string& name);
+    GameObject* GetGameObject(uint32_t id);
+    bool RemoveGameObject(const std::string& name);
+    bool RemoveGameObject(uint32_t id);
+    bool RemoveGameObject(GameObject* gameObject);
+    void ClearAllGameObjects();
+    
+    // GameObject queries
+    std::vector<GameObject*> GetAllGameObjects();
+    std::vector<GameObject*> GetGameObjectsWithName(const std::string& name);
+    size_t GetGameObjectCount() const;
 
-    // Rendering
-    void RenderAll();
-
-    // Layer management
-    void SetSpriteLayer(const std::string& id, int layer);
-    int GetSpriteLayer(const std::string& id) const;
-
-    // Utility
-    size_t GetSpriteCount() const;
-    std::vector<std::string> GetSpriteIds() const;
-    bool HasSprite(const std::string& id) const;
+    // Scene lifecycle
+    void Start();
+    void Update(double deltaTime);
+    void FixedUpdate(double fixedDeltaTime);
+    void Render();
 
 private:
-    // Storage for sprites
-    std::unordered_map<std::string, std::unique_ptr<Kiaak::Sprite>> sprites;
+    // GameObject storage
+    std::vector<std::unique_ptr<GameObject>> m_gameObjects;
+    std::unordered_map<std::string, GameObject*> m_gameObjectsByName;
+    std::unordered_map<uint32_t, GameObject*> m_gameObjectsById;
     
-    // Layer management for render order
-    std::unordered_map<std::string, int> spriteLayers;
-    
-    // Cache for sorted rendering (updated when layers change)
-    mutable std::vector<std::string> renderOrder;
-    mutable bool renderOrderDirty = true;
+    // Scene state
+    bool m_started = false;
     
     // Helper methods
-    void UpdateRenderOrder() const;
-    std::string GenerateUniqueId(const std::string& baseName) const;
+    std::string GenerateUniqueGameObjectName(const std::string& baseName) const;
 };
 
 } // namespace Core

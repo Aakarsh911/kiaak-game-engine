@@ -5,11 +5,6 @@
 #include "Core/Input.hpp"
 #include "Core/Scene.hpp"
 #include "Graphics/Renderer.hpp"
-#include "Graphics/Shader.hpp"
-#include "Graphics/VertexBuffer.hpp"
-#include "Graphics/VertexArray.hpp"
-#include "Graphics/Texture.hpp"
-#include "Graphics/Sprite.hpp"
 #include <memory>
 
 namespace Kiaak {
@@ -23,15 +18,15 @@ public:
     void Run();
     void Shutdown();
 
-    // Public sprite management API
-    Kiaak::Sprite* CreateSprite(const std::string& id, const std::string& texturePath);
-    Kiaak::Sprite* GetSprite(const std::string& id);
-    bool RemoveSprite(const std::string& id);
-    void SetSpriteLayer(const std::string& id, int layer);
+    // Public GameObject management API
+    Core::GameObject* CreateGameObject(const std::string& name = "GameObject");
+    Core::GameObject* GetGameObject(const std::string& name);
+    Core::GameObject* GetGameObject(uint32_t id);
+    bool RemoveGameObject(const std::string& name);
+    bool RemoveGameObject(uint32_t id);
 
     // Scene utilities
-    size_t GetSpriteCount() const;
-    std::vector<std::string> GetSpriteIds() const;
+    size_t GetGameObjectCount() const;
 
 private:
     // Core systems
@@ -50,7 +45,7 @@ private:
     void Render();
     
     // Demo creation (can be removed later when we have scene loading)
-    void CreateSpriteDemo();
+    void CreateGameObjectDemo();
 };
 
 } // namespace Kiaak
