@@ -1,5 +1,6 @@
 #include "Core/Input.hpp"
 #include <iostream>
+#include <vector>
 
 namespace Kiaak {
 
@@ -37,22 +38,36 @@ void Input::Update() {
     s_lastMouseX = s_mouseX;
     s_lastMouseY = s_mouseY;
     
-    // Update key states (convert pressed to held)
-    for (auto& pair : s_keyStates) {
-        if (pair.second == KeyState::Pressed) {
-            pair.second = KeyState::Held;
-        } else if (pair.second == KeyState::Released) {
-            s_keyStates.erase(pair.first);
+    for (auto& [key, state] : s_keyStates) {
+        if (state == KeyState::Pressed) {
+            state = KeyState::Held;
         }
     }
     
-    // Update mouse states
-    for (auto& pair : s_mouseStates) {
-        if (pair.second == KeyState::Pressed) {
-            pair.second = KeyState::Held;
-        } else if (pair.second == KeyState::Released) {
-            s_mouseStates.erase(pair.first);
+    std::vector<int> keysToErase;
+    for (auto& [key, state] : s_keyStates) {
+        if (state == KeyState::Released) {
+            keysToErase.push_back(key);
         }
+    }
+    for (int key : keysToErase) {
+        s_keyStates.erase(key);
+    }
+    
+    for (auto& [button, state] : s_mouseStates) {
+        if (state == KeyState::Pressed) {
+            state = KeyState::Held;
+        }
+    }
+    
+    std::vector<int> buttonsToErase;
+    for (auto& [button, state] : s_mouseStates) {
+        if (state == KeyState::Released) {
+            buttonsToErase.push_back(button);
+        }
+    }
+    for (int button : buttonsToErase) {
+        s_mouseStates.erase(button);
     }
 }
 

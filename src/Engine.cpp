@@ -105,18 +105,15 @@ void Engine::FixedUpdate(double fixedDeltaTime) {
 }
 
 void Engine::Render() {
-    // Begin frame
+    // Begin frame (clears screen automatically)
     renderer->BeginFrame();
-    
-    // Clear screen with bright blue color to see window boundaries
-    renderer->Clear(0.2f, 0.4f, 0.8f, 1.0f);
 
     // Render the scene (includes GameObjects with SpriteRenderer)
     if (currentScene) {
         currentScene->Render();
     }
 
-    // End frame
+    // End frame (presents/swaps buffers)
     renderer->EndFrame();
 }
 

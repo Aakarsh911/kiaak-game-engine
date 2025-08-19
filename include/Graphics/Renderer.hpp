@@ -11,7 +11,7 @@ public:
     ~Renderer();
 
     bool Initialize(const Window& window);
-    void BeginFrame();
+    void BeginFrame(float r = 0.2f, float g = 0.4f, float b = 0.8f, float a = 1.0f);
     void EndFrame();
     void Clear(float r, float g, float b, float a = 1.0f);
     void Shutdown();

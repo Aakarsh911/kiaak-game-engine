@@ -55,12 +55,21 @@ bool Renderer::InitializeOpenGL() {
     return true;
 }
 
-void Renderer::BeginFrame() {
+void Renderer::BeginFrame(float r, float g, float b, float a) {
     if (!isInitialized) return;
+    
+    // Clear the screen at the start of each frame
+    glClearColor(r, g, b, a);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 }
 
 void Renderer::EndFrame() {
     if (!isInitialized) return;
+    
+    // Present the rendered frame
+    if (targetWindow) {
+        glfwSwapBuffers(targetWindow->GetNativeWindow());
+    }
 }
 
 void Renderer::Clear(float r, float g, float b, float a) {

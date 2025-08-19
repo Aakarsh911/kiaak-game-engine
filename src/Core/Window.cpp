@@ -64,7 +64,7 @@ bool Window::Initialize() {
 }
 
 void Window::Update() {
-    glfwSwapBuffers(window);
+    // Only handle events, renderer handles buffer swapping
     glfwPollEvents();
 }
 
