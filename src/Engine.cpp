@@ -167,17 +167,17 @@ namespace Kiaak
 
         // First background sprite
         auto *imageObject = CreateGameObject("ImageSprite");
-        auto *imageRenderer = imageObject->AddComponent<Graphics::SpriteRenderer>("assets/background.png");
+        auto *imageRenderer = imageObject->AddComponent<Graphics::SpriteRenderer>("assets/spaceship.png");
         (void)imageRenderer; // not used after creation
 
-        imageObject->GetTransform()->SetPosition(0.0f, 0.0f, 0.0f);
+        imageObject->GetTransform()->SetPosition(0.0f, -100.0f, 0.0f);
         imageObject->GetTransform()->SetScale(1.0f);
 
         // First camera that looks at the background (in XY plane at Z=0)
         auto *camGO = CreateGameObject("MainCamera");
         auto *cam = camGO->AddComponent<Core::Camera>();
         camGO->GetTransform()->SetPosition(0.0f, 0.0f, 1.0f); // in front, looking toward -Z
-        cam->SetZoom(3.0f);
+        cam->SetZoom(1.0f);
 
         // Store reference to first camera
         firstCamera = cam;
@@ -185,22 +185,11 @@ namespace Kiaak
 
         // Second sprite at a different position
         auto *imageObject2 = CreateGameObject("ImageSprite2");
-        auto *imageRenderer2 = imageObject2->AddComponent<Graphics::SpriteRenderer>("assets/image.jpg");
+        auto *imageRenderer2 = imageObject2->AddComponent<Graphics::SpriteRenderer>("assets/background.png");
         (void)imageRenderer2; // not used after creation
 
-        imageObject2->GetTransform()->SetPosition(500.0f, 300.0f, 0.0f); // Different position
-        imageObject2->GetTransform()->SetScale(0.8f);
-
-        // Second camera that looks at the second sprite
-        auto *camGO2 = CreateGameObject("SecondCamera");
-        auto *cam2 = camGO2->AddComponent<Core::Camera>();
-        camGO2->GetTransform()->SetPosition(500.0f, 300.0f, 1.0f); // Position above second sprite
-        cam2->SetZoom(2.0f);                                       // Different zoom level
-
-        // Store reference to second camera
-        secondCamera = cam2;
-
-        std::cout << "Created two sprites and two cameras. Press '2' to switch to second camera." << std::endl;
+        imageObject2->GetTransform()->SetPosition(0.0f, 200.0f, 0.0f); // Different position
+        imageObject2->GetTransform()->SetScale(5.0f);
     }
 
     void Engine::SwitchToSecondCamera()
