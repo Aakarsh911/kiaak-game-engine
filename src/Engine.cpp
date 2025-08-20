@@ -186,7 +186,7 @@ namespace Kiaak
         // Second sprite at a different position
         auto *imageObject2 = CreateGameObject("ImageSprite2");
         auto *imageRenderer2 = imageObject2->AddComponent<Graphics::SpriteRenderer>("assets/background.png");
-        (void)imageRenderer2; // not used after creation
+        (void)imageRenderer2; // not used after creationeeeee
 
         imageObject2->GetTransform()->SetPosition(0.0f, 200.0f, 0.0f); // Different position
         imageObject2->GetTransform()->SetScale(5.0f);
