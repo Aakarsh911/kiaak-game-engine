@@ -73,6 +73,10 @@ namespace Kiaak
         void CreateEditorCamera();
         void SwitchToEditorMode();
         void SwitchToPlayMode();
+
+        // Utility functions
+        glm::vec2 ScreenToWorld(double mouseX, double mouseY, Core::Camera *cam) const;
+        void HandleSpriteClickDetection();
     };
 
 } // namespace Kiaak
