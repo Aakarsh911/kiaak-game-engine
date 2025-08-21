@@ -376,7 +376,7 @@ namespace Kiaak
         else
         {
             // Try to find any active camera in the scene
-            auto* sceneCamera = Core::Camera::GetActive();
+            auto *sceneCamera = Core::Camera::GetActive();
             if (sceneCamera)
             {
                 sceneCamera->SetActive();
