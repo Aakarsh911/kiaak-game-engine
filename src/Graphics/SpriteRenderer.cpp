@@ -44,8 +44,12 @@ namespace Kiaak
                 m_texture = std::make_shared<Texture>(texturePath);
                 if (m_texture && m_size == glm::vec2(1.0f))
                 {
-                    // Size defaults to texture pixel size
-                    m_size = glm::vec2(m_texture->GetWidth(), m_texture->GetHeight());
+                    // Convert pixel size to reasonable world units
+                    // Scale down by pixels per unit (like Unity's sprites)
+                    float pixelsPerUnit = 100.0f; // 100 pixels = 1 world unit
+                    float worldWidth = static_cast<float>(m_texture->GetWidth()) / pixelsPerUnit;
+                    float worldHeight = static_cast<float>(m_texture->GetHeight()) / pixelsPerUnit;
+                    m_size = glm::vec2(worldWidth, worldHeight);
                 }
             }
             catch (const std::exception &e)

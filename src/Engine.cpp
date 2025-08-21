@@ -8,7 +8,7 @@
 namespace Kiaak
 {
 
-    Engine::Engine() : isRunning(false), editorCamera(nullptr), activeSceneCamera(nullptr), editorMode(true), rightMouseDragging(false), editorCameraInitialPosition(0.0f, 0.0f, 5.0f), editorCameraInitialZoom(1.5f) {}
+    Engine::Engine() : isRunning(false), editorCamera(nullptr), activeSceneCamera(nullptr), editorMode(true), rightMouseDragging(false), editorCameraInitialPosition(0.0f, 0.0f, 5.0f), editorCameraInitialZoom(1.0f) {}
     Engine::~Engine()
     {
         Shutdown();
@@ -159,28 +159,29 @@ namespace Kiaak
     {
         std::cout << "Creating high-level sprite demo..." << std::endl;
 
-        // First background sprite
+        // Background sprite (positioned farther away)
+        auto *imageObject2 = CreateGameObject("ImageSprite2");
+        auto *imageRenderer2 = imageObject2->AddComponent<Graphics::SpriteRenderer>("assets/background.png");
+        (void)imageRenderer2; // not used after creation
+
+        imageObject2->GetTransform()->SetPosition(0.0f, 0.0f, -1.0f); // Background layer
+        imageObject2->GetTransform()->SetScale(10.0f);                // Reasonable scale for new coordinate system
+
+        // Spaceship sprite (positioned closer to camera)
         auto *imageObject = CreateGameObject("ImageSprite");
         auto *imageRenderer = imageObject->AddComponent<Graphics::SpriteRenderer>("assets/spaceship.png");
         (void)imageRenderer; // not used after creation
 
-        imageObject->GetTransform()->SetPosition(0.0f, -100.0f, 0.0f);
-        imageObject->GetTransform()->SetScale(1.0f);
+        imageObject->GetTransform()->SetPosition(0.0f, -3.0f, 0.0f); // Positioned in larger world space
+        imageObject->GetTransform()->SetScale(5.0f);
 
         // Main scene camera
         auto *camGO = CreateGameObject("MainCamera");
         auto *cam = camGO->AddComponent<Core::Camera>();
         camGO->GetTransform()->SetPosition(0.0f, 0.0f, 1.0f); // in front, looking toward -Z
-        cam->SetZoom(1.0f);
-        cam->SetActive(); // Set as active scene camera
-
-        // Second sprite at a different position
-        auto *imageObject2 = CreateGameObject("ImageSprite2");
-        auto *imageRenderer2 = imageObject2->AddComponent<Graphics::SpriteRenderer>("assets/background.png");
-        (void)imageRenderer2; // not used after creation
-
-        imageObject2->GetTransform()->SetPosition(0.0f, 200.0f, 0.0f); // Different position
-        imageObject2->GetTransform()->SetScale(5.0f);
+        cam->SetOrthographicSize(10.0f);                      // Fixed orthographic size for consistent view
+        cam->SetZoom(1.0f);                                   // Reset zoom to 1 since orthographic size handles the scale
+        cam->SetActive();                                     // Set as active scene camera
     }
 
     // GameObject API implementation
@@ -331,7 +332,7 @@ namespace Kiaak
 
             float zoomSensitivity = 0.1f;
             float newZoom = currentZoom + (scrollY * zoomSensitivity);
-            newZoom = glm::clamp(newZoom, 0.1f, 10.0f);
+            newZoom = glm::clamp(newZoom, 0.01f, 100.0f);
 
             std::cout << " -> New zoom: " << newZoom << std::endl;
             editorCamera->SetZoom(newZoom);
@@ -346,9 +347,10 @@ namespace Kiaak
 
         // Set and store initial position and zoom
         editorCameraInitialPosition = glm::vec3(0.0f, 0.0f, 5.0f);
-        editorCameraInitialZoom = 1.5f;
+        editorCameraInitialZoom = 1.0f; // Start with neutral zoom
 
         editorCamGO->GetTransform()->SetPosition(editorCameraInitialPosition.x, editorCameraInitialPosition.y, editorCameraInitialPosition.z);
+        editorCamera->SetOrthographicSize(10.0f); // Fixed orthographic size for consistent view
         editorCamera->SetZoom(editorCameraInitialZoom);
 
         std::cout << "Editor camera created" << std::endl;
