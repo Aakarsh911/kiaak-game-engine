@@ -8,7 +8,7 @@
 namespace Kiaak
 {
 
-    Engine::Engine() : isRunning(false), firstCamera(nullptr), secondCamera(nullptr), editorCamera(nullptr), activeSceneCamera(nullptr), editorMode(true), rightMouseDragging(false), editorCameraInitialPosition(0.0f, 0.0f, 5.0f), editorCameraInitialZoom(1.5f) {}
+    Engine::Engine() : isRunning(false), editorCamera(nullptr), activeSceneCamera(nullptr), editorMode(true), rightMouseDragging(false), editorCameraInitialPosition(0.0f, 0.0f, 5.0f), editorCameraInitialZoom(1.5f) {}
     Engine::~Engine()
     {
         Shutdown();
@@ -96,12 +96,6 @@ namespace Kiaak
             ToggleEditorMode();
         }
 
-        // Handle camera switching with '2' key
-        if (Input::IsKeyPressed(GLFW_KEY_2))
-        {
-            SwitchToSecondCamera();
-        }
-
         Input::Update();
     }
 
@@ -173,37 +167,20 @@ namespace Kiaak
         imageObject->GetTransform()->SetPosition(0.0f, -100.0f, 0.0f);
         imageObject->GetTransform()->SetScale(1.0f);
 
-        // First camera that looks at the background (in XY plane at Z=0)
+        // Main scene camera
         auto *camGO = CreateGameObject("MainCamera");
         auto *cam = camGO->AddComponent<Core::Camera>();
         camGO->GetTransform()->SetPosition(0.0f, 0.0f, 1.0f); // in front, looking toward -Z
         cam->SetZoom(1.0f);
-
-        // Store reference to first camera
-        firstCamera = cam;
-        activeSceneCamera = cam; // Set this as the default scene camera
+        cam->SetActive(); // Set as active scene camera
 
         // Second sprite at a different position
         auto *imageObject2 = CreateGameObject("ImageSprite2");
         auto *imageRenderer2 = imageObject2->AddComponent<Graphics::SpriteRenderer>("assets/background.png");
-        (void)imageRenderer2; // not used after creationeeeee
+        (void)imageRenderer2; // not used after creation
 
         imageObject2->GetTransform()->SetPosition(0.0f, 200.0f, 0.0f); // Different position
         imageObject2->GetTransform()->SetScale(5.0f);
-    }
-
-    void Engine::SwitchToSecondCamera()
-    {
-        if (secondCamera)
-        {
-            // Set the second camera as the active camera
-            secondCamera->SetActive();
-            std::cout << "Switched to second camera!" << std::endl;
-        }
-        else
-        {
-            std::cout << "Second camera not available!" << std::endl;
-        }
     }
 
     // GameObject API implementation
@@ -396,14 +373,18 @@ namespace Kiaak
         {
             activeSceneCamera->SetActive();
         }
-        else if (firstCamera)
-        {
-            // Fallback to first camera if no stored scene camera
-            firstCamera->SetActive();
-        }
         else
         {
-            std::cout << "PLAY MODE - No scene camera available!" << std::endl;
+            // Try to find any active camera in the scene
+            auto* sceneCamera = Core::Camera::GetActive();
+            if (sceneCamera)
+            {
+                sceneCamera->SetActive();
+            }
+            else
+            {
+                std::cout << "PLAY MODE - No scene camera available!" << std::endl;
+            }
         }
     }
 

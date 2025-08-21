@@ -46,9 +46,7 @@ namespace Kiaak
         // Scene management
         std::unique_ptr<Core::Scene> currentScene;
 
-        // Camera references for switching
-        Core::Camera *firstCamera;
-        Core::Camera *secondCamera;
+        // Camera references for editor
         Core::Camera *editorCamera;
         Core::Camera *activeSceneCamera;
 
@@ -68,9 +66,6 @@ namespace Kiaak
 
         // Demo creation (can be removed later when we have scene loading)
         void CreateGameObjectDemo();
-
-        // Camera switching
-        void SwitchToSecondCamera();
 
         // Editor mode
         void ToggleEditorMode();
