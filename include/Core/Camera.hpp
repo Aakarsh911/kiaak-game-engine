@@ -43,6 +43,9 @@ namespace Kiaak
             const glm::mat4 &GetProjection() const;
             glm::mat4 GetViewProjection() const { return GetProjection() * GetView(); }
 
+            // Manually mark view dirty (used when camera's transform changes outside normal Update cycle)
+            void InvalidateView() { m_viewDirty = true; }
+
         private:
             void RecalculateView() const;
             void RecalculateProjection() const;

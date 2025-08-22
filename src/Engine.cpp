@@ -296,6 +296,8 @@ namespace Kiaak
                 auto *editorTransform = editorCamera->GetGameObject()->GetTransform();
                 editorTransform->SetPosition(editorCameraInitialPosition.x, editorCameraInitialPosition.y, editorCameraInitialPosition.z);
                 editorCamera->SetZoom(editorCameraInitialZoom);
+                // Ensure immediate visual reset (without waiting for a drag to invalidate)
+                editorCamera->InvalidateView();
             }
         }
 
@@ -320,6 +322,8 @@ namespace Kiaak
                 currentPos.y += mouseDeltaY * sensitivity;
 
                 editorTransform->SetPosition(currentPos.x, currentPos.y, currentPos.z);
+                // Ensure the camera view matrix is marked dirty if not updated elsewhere this frame
+                editorCamera->InvalidateView();
                 lastMouseX = currentMouseX;
                 lastMouseY = currentMouseY;
             }

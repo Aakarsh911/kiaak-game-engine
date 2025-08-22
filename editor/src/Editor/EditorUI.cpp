@@ -176,6 +176,7 @@ namespace Kiaak
                 std::vector<Core::GameObject *> pendingDelete;
 
                 auto sceneNames = sceneManager->GetSceneNames();
+                std::vector<std::string> scenesPendingDelete; // defer until after tree loop
                 for (auto &sceneName : sceneNames)
                 {
                     Core::Scene *scene = sceneManager->GetScene(sceneName);
@@ -198,6 +199,13 @@ namespace Kiaak
                             activeScene = scene;
                             selectedObject = nullptr;
                         }
+                        bool canDelete = (sceneManager->GetSceneCount() > 1);
+                        if (ImGui::MenuItem("Delete Scene", nullptr, false, canDelete))
+                        {
+                            scenesPendingDelete.push_back(sceneName);
+                        }
+                        if (!canDelete && ImGui::IsItemHovered())
+                            ImGui::SetTooltip("Need at least one scene");
                         ImGui::EndPopup();
                     }
 
@@ -215,7 +223,55 @@ namespace Kiaak
                                 flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
                             if (selectedObject == node)
                                 flags |= ImGuiTreeNodeFlags_Selected;
+                            // Draw tree node (label used for ID only so we can custom-draw name + icon)
                             bool open = ImGui::TreeNodeEx((void *)node, flags, "%s", node->GetName().c_str());
+                            // Draw icon overlay (camera or sprite) to the left of text inside item rect
+                            ImVec2 itemMin = ImGui::GetItemRectMin();
+                            ImVec2 itemMax = ImGui::GetItemRectMax();
+                            float iconSize = (itemMax.y - itemMin.y) * 0.55f; // square that fits line height
+                            float iconPadY = (itemMax.y - itemMin.y - iconSize) * 0.5f;
+                            float iconPadX = 4.0f; // small left padding after arrow
+                            // Compute where ImGui placed text start: we approximate by itemMin.x + arrow+frame padding
+                            // We'll shift left a bit from text start; simpler: draw at itemMin.x + iconPadX
+                            ImVec2 iconMin(itemMin.x + iconPadX, itemMin.y + iconPadY);
+                            ImVec2 iconMax(iconMin.x + iconSize, iconMin.y + iconSize);
+                            auto *dl = ImGui::GetWindowDrawList();
+                            bool hasCamera = node->GetComponent<Core::Camera>() != nullptr;
+                            bool hasSprite = node->GetComponent<Graphics::SpriteRenderer>() != nullptr;
+                            if (hasCamera || hasSprite)
+                            {
+                                if (hasCamera)
+                                {
+                                    // Camera icon: body rectangle + lens circle
+                                    ImU32 bodyCol = IM_COL32(90, 160, 255, 255);
+                                    ImU32 lensCol = IM_COL32(240, 250, 255, 255);
+                                    // Body
+                                    dl->AddRectFilled(iconMin, iconMax, bodyCol, 2.0f);
+                                    // Lens (circle) inside
+                                    float lensRadius = iconSize * 0.28f;
+                                    ImVec2 lensCenter(iconMin.x + iconSize * 0.65f, iconMin.y + iconSize * 0.5f);
+                                    dl->AddCircleFilled(lensCenter, lensRadius, lensCol, 12);
+                                    // Small viewfinder protrusion
+                                    ImVec2 vf0(iconMin.x - iconSize * 0.25f, iconMin.y + iconSize * 0.15f);
+                                    ImVec2 vf1(iconMin.x, iconMin.y + iconSize * 0.55f);
+                                    dl->AddRectFilled(vf0, vf1, bodyCol, 1.5f);
+                                }
+                                else if (hasSprite)
+                                {
+                                    // Sprite icon: stacked diamond outline + filled square
+                                    ImU32 fillCol = IM_COL32(255, 180, 60, 255);
+                                    ImU32 outlineCol = IM_COL32(255, 140, 0, 255);
+                                    float cx = (iconMin.x + iconMax.x) * 0.5f;
+                                    float cy = (iconMin.y + iconMax.y) * 0.5f;
+                                    float r = iconSize * 0.45f;
+                                    ImVec2 p0(cx, cy - r);
+                                    ImVec2 p1(cx + r, cy);
+                                    ImVec2 p2(cx, cy + r);
+                                    ImVec2 p3(cx - r, cy);
+                                    dl->AddQuadFilled(p0, p1, p2, p3, fillCol);
+                                    dl->AddQuad(p0, p1, p2, p3, outlineCol, 1.0f);
+                                }
+                            }
                             if (ImGui::IsItemClicked())
                                 selectedObject = node;
 
@@ -254,6 +310,20 @@ namespace Kiaak
                     for (auto *go : pendingDelete)
                     {
                         activeScene->RemoveGameObject(go->GetName());
+                    }
+                    Core::SceneSerialization::SaveAllScenes(sceneManager, "saved_scenes.txt");
+                }
+                if (!scenesPendingDelete.empty())
+                {
+                    for (auto &sn : scenesPendingDelete)
+                    {
+                        bool wasCurrent = (sceneManager->GetCurrentScene() && sceneManager->GetCurrentScene() == sceneManager->GetScene(sn));
+                        if (sceneManager->DeleteScene(sn))
+                        {
+                            // If we deleted selected object's scene, clear selection
+                            if (wasCurrent)
+                                selectedObject = nullptr;
+                        }
                     }
                     Core::SceneSerialization::SaveAllScenes(sceneManager, "saved_scenes.txt");
                 }
