@@ -48,7 +48,7 @@ namespace Kiaak
         Input::Initialize(window->GetNativeWindow());
         sceneManager = std::make_unique<Core::SceneManager>();
 
-            if (!Core::Project::HasPath())
+        if (!Core::Project::HasPath())
         {
             std::ifstream projIn("last_project.txt");
             if (projIn.is_open())
@@ -63,7 +63,7 @@ namespace Kiaak
             }
         }
 
-    if (Core::Project::HasPath())
+        if (Core::Project::HasPath())
         {
             auto scenesPath = Core::Project::GetScenesPath();
             if (std::filesystem::exists(scenesPath))
@@ -80,7 +80,7 @@ namespace Kiaak
                 }
             }
         }
-    if (sceneManager->GetSceneNames().empty())
+        if (sceneManager->GetSceneNames().empty())
         {
             sceneManager->CreateScene("MainScene");
         }
@@ -138,18 +138,18 @@ namespace Kiaak
 
     void Engine::Update(double deltaTime)
     {
-    if (editorMode)
+        if (editorMode)
         {
             HandleEditorInput(deltaTime);
         }
-    if (auto *sc = GetCurrentScene())
+        if (auto *sc = GetCurrentScene())
         {
             sc->Update(deltaTime);
         }
 
-    HandleSpriteClickDetection();
+        HandleSpriteClickDetection();
 
-    Input::ResetScrollValues();
+        Input::ResetScrollValues();
     }
 
     // Fixed timestep updates
@@ -208,15 +208,13 @@ namespace Kiaak
                         glm::vec4 camColor(1.0f, 1.0f, 1.0f, 0.9f);
                         float z = camPos.z + 0.05f;
 
-                        
                         if (go->GetName() == "EditorCamera")
                             continue;
 
-                        
                         float border = 0.01f;
                         if (auto *vcam = cam)
                         {
-                            
+
                             if (window)
                             {
                                 float visibleH = 2.0f * vcam->GetOrthographicSize() / std::max(vcam->GetZoom(), 0.0001f);
@@ -229,7 +227,6 @@ namespace Kiaak
                         float width = halfW * 2.0f;
                         float height = halfH * 2.0f;
 
-                        
                         const float eps = 1e-5f;
                         if (width > eps && height > eps)
                         {
@@ -516,8 +513,8 @@ namespace Kiaak
         if (!cam)
             return glm::vec2(0.0f);
 
-    // Convert logical mouse coords to framebuffer NDC (accounts for HiDPI)
-    const double logicalW = static_cast<double>(window->GetWidth());
+        // Convert logical mouse coords to framebuffer NDC (accounts for HiDPI)
+        const double logicalW = static_cast<double>(window->GetWidth());
         const double logicalH = static_cast<double>(window->GetHeight());
         const double fbW = static_cast<double>(window->GetFramebufferWidth());
         const double fbH = static_cast<double>(window->GetFramebufferHeight());
@@ -532,7 +529,7 @@ namespace Kiaak
         const float x_ndc = static_cast<float>((mouseX_fb / fbW) * 2.0 - 1.0);
         const float y_ndc = static_cast<float>(1.0 - (mouseY_fb / fbH) * 2.0); // flip Y (window origin top-left)
 
-    // Unproject using inverse ViewProjection into world XY
+        // Unproject using inverse ViewProjection into world XY
         const glm::mat4 invVP = glm::inverse(cam->GetViewProjection());
         glm::vec4 world = invVP * glm::vec4(x_ndc, y_ndc, 0.0f, 1.0f);
         if (world.w != 0.0f)
@@ -543,18 +540,18 @@ namespace Kiaak
 
     void Engine::HandleSpriteClickDetection()
     {
-    // Skip if gizmo dragging
+        // Skip if gizmo dragging
         if (gizmoDragging)
             return;
         if (!Input::IsMouseButtonHeld(MouseButton::Left))
             return;
 
-    // Ignore when ImGui captures the mouse
+        // Ignore when ImGui captures the mouse
         ImGuiIO &io = ImGui::GetIO();
         if (io.WantCaptureMouse)
             return;
 
-    // Get current mouse position
+        // Get current mouse position
         double mouseX, mouseY;
         Input::GetMousePosition(mouseX, mouseY);
 
@@ -571,7 +568,7 @@ namespace Kiaak
         if (!currentScene)
             return;
 
-    // Collect clicked items (sprites & cameras)
+        // Collect clicked items (sprites & cameras)
         struct ClickedItem
         {
             Core::GameObject *gameObject;
@@ -732,8 +729,8 @@ namespace Kiaak
         const glm::vec2 ctr = {(minX + maxX) * 0.5f, (minY + maxY) * 0.5f};
         const float z = transform->GetPosition().z + 0.02f; // nudge above sprite to avoid z-fighting
 
-    // Thickness ~2px in world units
-    float thickness = 0.01f;
+        // Thickness ~2px in world units
+        float thickness = 0.01f;
         if (auto *cam = Core::Camera::GetActive(); cam && window)
         {
             const float visibleH = 2.0f * cam->GetOrthographicSize() / std::max(cam->GetZoom(), 0.0001f);
@@ -743,7 +740,7 @@ namespace Kiaak
 
         const glm::vec4 gizmoColor(1.0f, 0.6f, 0.05f, 1.0f);
 
-    // Draw outline
+        // Draw outline
         // Top
         renderer->DrawQuad(glm::vec3(ctr.x, maxY + thickness * 0.5f, z),
                            glm::vec2(width + thickness * 2.0f, thickness),
@@ -761,7 +758,7 @@ namespace Kiaak
                            glm::vec2(thickness, height),
                            gizmoColor);
 
-    // Corner handles
+        // Corner handles
         const float handle = thickness * 3.0f;
         renderer->DrawQuad(glm::vec3(minX, minY, z), glm::vec2(handle, handle), gizmoColor);
         renderer->DrawQuad(glm::vec3(maxX, minY, z), glm::vec2(handle, handle), gizmoColor);
