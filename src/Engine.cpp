@@ -83,18 +83,21 @@ namespace Kiaak
 
     void Engine::Update(double deltaTime)
     {
+        // Handle editor mode input
         if (editorMode)
         {
             HandleEditorInput(deltaTime);
         }
 
-        HandleSpriteClickDetection();
-
+        // Update the scene (calls Update on all GameObjects)
         if (currentScene)
         {
             currentScene->Update(deltaTime);
         }
 
+        HandleSpriteClickDetection();
+
+        // Reset scroll values after all input processing is done
         Input::ResetScrollValues();
     }
 
@@ -356,6 +359,9 @@ namespace Kiaak
 
         // Convert mouse position to world coordinates
         glm::vec2 worldPos = ScreenToWorld(mouseX, mouseY, cam);
+
+        // Debug logging
+        std::cout << "Mouse: (" << mouseX << ", " << mouseY << ") -> World: (" << worldPos.x << ", " << worldPos.y << ")" << std::endl;
 
         // Check all GameObjects with SpriteRenderer components
         if (!currentScene)
