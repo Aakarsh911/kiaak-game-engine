@@ -29,6 +29,7 @@ namespace Kiaak
         Shutdown();
     }
 
+    // Initialize engine subsystems and load project/scenes
     bool Engine::Initialize()
     {
         window = std::make_unique<Window>(800, 600, "Kiaak Engine");
@@ -47,8 +48,7 @@ namespace Kiaak
         Input::Initialize(window->GetNativeWindow());
         sceneManager = std::make_unique<Core::SceneManager>();
 
-        // Attempt to restore last opened project
-        if (!Core::Project::HasPath())
+            if (!Core::Project::HasPath())
         {
             std::ifstream projIn("last_project.txt");
             if (projIn.is_open())
@@ -63,8 +63,7 @@ namespace Kiaak
             }
         }
 
-        // Project-based load: if a project path is set, load all *.scene files inside its scenes folder.
-        if (Core::Project::HasPath())
+    if (Core::Project::HasPath())
         {
             auto scenesPath = Core::Project::GetScenesPath();
             if (std::filesystem::exists(scenesPath))
@@ -81,8 +80,7 @@ namespace Kiaak
                 }
             }
         }
-        // Fallback: if still no scenes, create default
-        if (sceneManager->GetSceneNames().empty())
+    if (sceneManager->GetSceneNames().empty())
         {
             sceneManager->CreateScene("MainScene");
         }
@@ -106,17 +104,12 @@ namespace Kiaak
         return true;
     }
 
+    // Main loop: input, update, render, and advance input states
     void Engine::Run()
     {
         while (isRunning && !window->ShouldClose())
         {
-            // Poll OS events at the very start of the frame so newly generated
-            // input (mouse presses, moves, scroll) is visible to game/editor logic
-            // BEFORE we evaluate Pressed/Held logic and before PostFrame() promotes
-            // Pressed -> Held. Previously we polled at the end, causing Pressed to
-            // be converted to Held in the same frame it arrived (never observable)
-            // which broke one-frame interactions like starting a drag.
-            window->Update(); // glfwPollEvents()
+            window->Update();
 
             timer->update();
             ProcessInput();
@@ -128,11 +121,11 @@ namespace Kiaak
 
             Update(timer->getDeltaTime());
             Render();
-            // Advance input states AFTER logic & rendering so Pressed is visible for one full frame
             Input::PostFrame();
         }
     }
 
+    // Handle per-frame input
     void Engine::ProcessInput()
     {
         if (Input::IsKeyPressed(GLFW_KEY_ESCAPE))
@@ -140,31 +133,26 @@ namespace Kiaak
             isRunning = false;
         }
 
-        // Removed 'E' key toggle; play/pause now handled by top bar button.
-
         Input::Update();
     }
 
     void Engine::Update(double deltaTime)
     {
-        // Handle editor mode input
-        if (editorMode)
+    if (editorMode)
         {
             HandleEditorInput(deltaTime);
         }
-
-        // Update the scene (calls Update on all GameObjects)
-        if (auto *sc = GetCurrentScene())
+    if (auto *sc = GetCurrentScene())
         {
             sc->Update(deltaTime);
         }
 
-        HandleSpriteClickDetection();
+    HandleSpriteClickDetection();
 
-        // Reset scroll values after all input processing is done
-        Input::ResetScrollValues();
+    Input::ResetScrollValues();
     }
 
+    // Fixed timestep updates
     void Engine::FixedUpdate(double fixedDeltaTime)
     {
         if (auto *sc = GetCurrentScene())
@@ -173,6 +161,7 @@ namespace Kiaak
         }
     }
 
+    // Render scene and editor UI
     void Engine::Render()
     {
         renderer->BeginFrame(0.2f, 0.2f, 0.2f, 1.0f);
@@ -189,7 +178,7 @@ namespace Kiaak
             {
                 RenderSelectionGizmo();
             }
-            // Editor-only camera preview: draw the view rect for any GameObject that has a Camera component
+            // Draw camera view rects for scene cameras (editor only)
             if (editorMode)
             {
                 if (auto *sc = GetCurrentScene())
@@ -219,15 +208,15 @@ namespace Kiaak
                         glm::vec4 camColor(1.0f, 1.0f, 1.0f, 0.9f);
                         float z = camPos.z + 0.05f;
 
-                        // Skip the special editor camera GameObject (created for editor controls)
+                        
                         if (go->GetName() == "EditorCamera")
                             continue;
 
-                        // Compute a stable border thickness in world units based on camera viewport so it appears ~2px
+                        
                         float border = 0.01f;
                         if (auto *vcam = cam)
                         {
-                            // Attempt to get per-pixel world size using this camera's orthographic size and the window height
+                            
                             if (window)
                             {
                                 float visibleH = 2.0f * vcam->GetOrthographicSize() / std::max(vcam->GetZoom(), 0.0001f);
@@ -240,7 +229,7 @@ namespace Kiaak
                         float width = halfW * 2.0f;
                         float height = halfH * 2.0f;
 
-                        // Only draw if the camera view has positive area
+                        
                         const float eps = 1e-5f;
                         if (width > eps && height > eps)
                         {
@@ -255,10 +244,10 @@ namespace Kiaak
                     }
                 }
             }
-            editorCore->Render(); // internally hides editor-only panels in play mode
+            editorCore->Render();
             if (editorMode)
             {
-                // Sync engine-side selection (used for gizmo) with editor selection (updated via hierarchy clicks)
+                // Sync engine selection with editor selection
                 Core::GameObject *editorSel = editorCore->GetSelectedObject();
                 if (editorSel)
                 {
@@ -276,7 +265,7 @@ namespace Kiaak
                         }
                     }
                     if (!found)
-                        editorSel = nullptr; // scene switched; drop stale selection
+                        editorSel = nullptr;
                 }
                 if (selectedGameObject != editorSel)
                 {
@@ -480,7 +469,7 @@ namespace Kiaak
 
     void Engine::CreateEditorCamera()
     {
-        // Create editor camera only if not already present to avoid duplicates
+        // Create or reuse the editor camera GameObject
         if (editorCamera)
             return;
         auto *editorCamGO = CreateGameObject("EditorCamera");
@@ -496,19 +485,15 @@ namespace Kiaak
 
     void Engine::SwitchToEditorMode()
     {
-        // Store the current active scene camera before switching
+        // Remember active scene camera, then activate editor camera
         activeSceneCamera = Core::Camera::GetActive();
-
-        // Switch to editor camera
         if (editorCamera)
-        {
             editorCamera->SetActive();
-        }
     }
 
     void Engine::SwitchToPlayMode()
     {
-        // Set designated scene camera active if available
+        // Restore designated scene camera or previously active scene camera
         if (auto *sc = GetCurrentScene())
         {
             if (sc->GetDesignatedCamera())
@@ -531,9 +516,8 @@ namespace Kiaak
         if (!cam)
             return glm::vec2(0.0f);
 
-        // We get mouse coords in logical window space. Projection & viewport use framebuffer (pixel) size.
-        // Scale mouse to framebuffer space before converting to NDC to handle HiDPI / Retina.
-        const double logicalW = static_cast<double>(window->GetWidth());
+    // Convert logical mouse coords to framebuffer NDC (accounts for HiDPI)
+    const double logicalW = static_cast<double>(window->GetWidth());
         const double logicalH = static_cast<double>(window->GetHeight());
         const double fbW = static_cast<double>(window->GetFramebufferWidth());
         const double fbH = static_cast<double>(window->GetFramebufferHeight());
@@ -548,7 +532,7 @@ namespace Kiaak
         const float x_ndc = static_cast<float>((mouseX_fb / fbW) * 2.0 - 1.0);
         const float y_ndc = static_cast<float>(1.0 - (mouseY_fb / fbH) * 2.0); // flip Y (window origin top-left)
 
-        // Unproject using inverse VP. Z=0 puts us on the "middle" clip-depth; good enough for 2D at world Z=0.
+    // Unproject using inverse ViewProjection into world XY
         const glm::mat4 invVP = glm::inverse(cam->GetViewProjection());
         glm::vec4 world = invVP * glm::vec4(x_ndc, y_ndc, 0.0f, 1.0f);
         if (world.w != 0.0f)
@@ -559,18 +543,18 @@ namespace Kiaak
 
     void Engine::HandleSpriteClickDetection()
     {
-        // Skip while dragging gizmo
+    // Skip if gizmo dragging
         if (gizmoDragging)
             return;
         if (!Input::IsMouseButtonHeld(MouseButton::Left))
             return;
 
-        // If ImGui wants the mouse (e.g., clicking in a panel), don't perform world selection
+    // Ignore when ImGui captures the mouse
         ImGuiIO &io = ImGui::GetIO();
         if (io.WantCaptureMouse)
             return;
 
-        // Get current mouse position
+    // Get current mouse position
         double mouseX, mouseY;
         Input::GetMousePosition(mouseX, mouseY);
 
@@ -582,15 +566,12 @@ namespace Kiaak
         // Convert mouse position to world coordinates
         glm::vec2 worldPos = ScreenToWorld(mouseX, mouseY, cam);
 
-        // Debug (optional)
-        // std::cout << "Mouse: (" << mouseX << ", " << mouseY << ") -> World: (" << worldPos.x << ", " << worldPos.y << ")" << std::endl;
-
         // Check all GameObjects with SpriteRenderer components
         auto *currentScene = GetCurrentScene();
         if (!currentScene)
             return;
 
-        // Collect all clicked items (sprites and cameras) with their Z values
+    // Collect clicked items (sprites & cameras)
         struct ClickedItem
         {
             Core::GameObject *gameObject;
@@ -751,8 +732,8 @@ namespace Kiaak
         const glm::vec2 ctr = {(minX + maxX) * 0.5f, (minY + maxY) * 0.5f};
         const float z = transform->GetPosition().z + 0.02f; // nudge above sprite to avoid z-fighting
 
-        // Thickness ~2px in world units
-        float thickness = 0.01f; // fallback
+    // Thickness ~2px in world units
+    float thickness = 0.01f;
         if (auto *cam = Core::Camera::GetActive(); cam && window)
         {
             const float visibleH = 2.0f * cam->GetOrthographicSize() / std::max(cam->GetZoom(), 0.0001f);
@@ -762,7 +743,7 @@ namespace Kiaak
 
         const glm::vec4 gizmoColor(1.0f, 0.6f, 0.05f, 1.0f);
 
-        // Outline
+    // Draw outline
         // Top
         renderer->DrawQuad(glm::vec3(ctr.x, maxY + thickness * 0.5f, z),
                            glm::vec2(width + thickness * 2.0f, thickness),
@@ -780,7 +761,7 @@ namespace Kiaak
                            glm::vec2(thickness, height),
                            gizmoColor);
 
-        // Corner handles
+    // Corner handles
         const float handle = thickness * 3.0f;
         renderer->DrawQuad(glm::vec3(minX, minY, z), glm::vec2(handle, handle), gizmoColor);
         renderer->DrawQuad(glm::vec3(maxX, minY, z), glm::vec2(handle, handle), gizmoColor);
