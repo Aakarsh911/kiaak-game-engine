@@ -88,13 +88,34 @@ namespace Kiaak
                 if (transform)
                 {
                     ImGui::Text("Transform");
-                    ImVec2 pos = ImVec2(transform->GetPosition().x, transform->GetPosition().y);
-                    ImGui::Text("Position: (%.2f, %.2f)", pos.x, pos.y);
+                    // Editable Position (X, Y, Z)
+                    glm::vec3 pos = transform->GetPosition();
+                    if (ImGui::DragFloat3("Position", &pos.x, 0.1f))
+                    {
+                        transform->SetPosition(pos);
+                    }
 
-                    ImVec2 scale = ImVec2(transform->GetScale().x, transform->GetScale().y);
-                    ImGui::Text("Scale: (%.2f, %.2f)", scale.x, scale.y);
+                    // Editable Rotation (degrees). For 2D we mainly care about Z, but expose all 3.
+                    glm::vec3 rot = transform->GetRotation();
+                    if (ImGui::DragFloat3("Rotation", &rot.x, 0.5f))
+                    {
+                        transform->SetRotation(rot);
+                    }
 
-                    ImGui::Text("Rotation: %.2f", transform->GetRotation().z);
+                    // Editable Scale (uniform or per-axis). Ensure scale not zero to avoid degenerate matrix.
+                    glm::vec3 scl = transform->GetScale();
+                    if (ImGui::DragFloat3("Scale", &scl.x, 0.05f, 0.0001f, 1000.0f))
+                    {
+                        // Prevent negative zero issues; optionally clamp extremely small values.
+                        for (int i = 0; i < 3; ++i)
+                        {
+                            if (scl[i] == 0.0f)
+                                scl[i] = 0.0001f;
+                        }
+                        transform->SetScale(scl);
+                    }
+
+                    ImGui::Separator();
                 }
 
                 auto sprite = selectedObject->GetComponent<Graphics::SpriteRenderer>();

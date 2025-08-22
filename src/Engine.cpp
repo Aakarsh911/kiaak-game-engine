@@ -3,6 +3,7 @@
 #include "Core/Camera.hpp"
 #include "Editor/EditorCore.hpp"
 #include "Editor/EditorUI.hpp"
+#include "imgui.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glad/glad.h>
@@ -368,7 +369,14 @@ namespace Kiaak
 
     void Engine::HandleSpriteClickDetection()
     {
+        // Use Held instead of Pressed because Input::Update() (called in ProcessInput) converts Pressed->Held
+        // before we reach this function in Update(). Using Pressed here would miss the click.
         if (!Input::IsMouseButtonHeld(MouseButton::Left))
+            return;
+
+        // If ImGui wants the mouse (e.g., clicking in a panel), don't perform world selection
+        ImGuiIO &io = ImGui::GetIO();
+        if (io.WantCaptureMouse)
             return;
 
         // Get current mouse position
