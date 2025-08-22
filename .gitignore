@@ -92,6 +92,17 @@ core
 # Project specific build artifacts
 compile_commands.json
 
+# ImGui configuration (user-specific)
+imgui.ini
+
+# Image files
+*.jpg
+*.jpeg
+*.png
+*.bmp
+*.tga
+*.gif
+
 # Keep shader files
 !assets/shaders/*
 
