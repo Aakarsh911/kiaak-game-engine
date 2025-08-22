@@ -1,6 +1,8 @@
 #include "Engine.hpp"
 #include "Graphics/SpriteRenderer.hpp"
 #include "Core/Camera.hpp"
+#include "Editor/EditorCore.hpp"
+#include "Editor/EditorUI.hpp"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glad/glad.h>
@@ -11,7 +13,7 @@
 namespace Kiaak
 {
 
-    Engine::Engine() : isRunning(false), editorCamera(nullptr), activeSceneCamera(nullptr), editorMode(true), rightMouseDragging(false), editorCameraInitialPosition(0.0f, 0.0f, 5.0f), editorCameraInitialZoom(1.0f), selectedGameObject(nullptr) {}
+    Engine::Engine() : isRunning(false), editorCamera(nullptr), activeSceneCamera(nullptr), editorMode(true), rightMouseDragging(false), editorCameraInitialPosition(0.0f, 0.0f, 5.0f), editorCameraInitialZoom(1.0f), selectedGameObject(nullptr), editorCore(nullptr) {}
     Engine::~Engine()
     {
         Shutdown();
@@ -37,6 +39,12 @@ namespace Kiaak
 
         CreateGameObjectDemo();
         CreateEditorCamera();
+
+        editorCore = std::make_unique<Kiaak::EditorCore>();
+        if (!editorCore->Initialize(window.get(), currentScene.get(), renderer.get()))
+        {
+            return false;
+        }
 
         if (currentScene)
         {
@@ -118,7 +126,14 @@ namespace Kiaak
             currentScene->Render();
         }
 
-        RenderSelectionGizmo();
+        if (editorMode && editorCore)
+        {
+            RenderSelectionGizmo();
+
+            EditorUI::BeginFrame();
+            editorCore->Render();
+            EditorUI::EndFrame();
+        }
 
         renderer->EndFrame();
     }
@@ -431,11 +446,19 @@ namespace Kiaak
 
             const auto &topSprite = clickedSprites[0];
             selectedGameObject = topSprite.gameObject;
+            if (editorCore)
+            {
+                editorCore->SetSelectedObject(selectedGameObject);
+            }
             std::cout << "Selected: " << selectedGameObject->GetName() << std::endl;
         }
         else
         {
             selectedGameObject = nullptr;
+            if (editorCore)
+            {
+                editorCore->SetSelectedObject(nullptr);
+            }
         }
     }
 

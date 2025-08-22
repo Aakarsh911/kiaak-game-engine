@@ -13,15 +13,33 @@ pkg_check_modules(GLFW REQUIRED glfw3)
 file(GLOB_RECURSE SOURCES "src/*.cpp")
 file(GLOB_RECURSE HEADERS "include/*.hpp")
 
+# Add editor source files
+file(GLOB_RECURSE EDITOR_SOURCES "editor/src/*.cpp")
+file(GLOB_RECURSE EDITOR_HEADERS "editor/include/*.hpp")
+
 # Add GLAD source
 set(GLAD_SOURCES external/glad/src/glad.c)
 
+# Add ImGui sources
+set(IMGUI_SOURCES
+    external/imgui/imgui.cpp
+    external/imgui/imgui_demo.cpp
+    external/imgui/imgui_draw.cpp
+    external/imgui/imgui_tables.cpp
+    external/imgui/imgui_widgets.cpp
+    external/imgui/backends/imgui_impl_glfw.cpp
+    external/imgui/backends/imgui_impl_opengl3.cpp
+)
+
 # Create the executable
-add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS} ${GLAD_SOURCES})
+add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS} ${EDITOR_SOURCES} ${EDITOR_HEADERS} ${GLAD_SOURCES} ${IMGUI_SOURCES})
 
 # Include directories
 target_include_directories(${PROJECT_NAME} PRIVATE include)
+target_include_directories(${PROJECT_NAME} PRIVATE editor/include)
 target_include_directories(${PROJECT_NAME} PRIVATE external/glad/include)
+target_include_directories(${PROJECT_NAME} PRIVATE external/imgui)
+target_include_directories(${PROJECT_NAME} PRIVATE external/imgui/backends)
 target_include_directories(${PROJECT_NAME} PRIVATE /opt/homebrew/Cellar/glfw/3.4/include)
 target_include_directories(${PROJECT_NAME} PRIVATE /opt/homebrew/Cellar/glm/1.0.1/include)
 

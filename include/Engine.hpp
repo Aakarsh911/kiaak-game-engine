@@ -5,6 +5,7 @@
 #include "Core/Input.hpp"
 #include "Core/Scene.hpp"
 #include "Graphics/Renderer.hpp"
+#include "Editor/EditorCore.hpp"
 #include <memory>
 #include <glm/glm.hpp>
 
@@ -13,7 +14,7 @@ namespace Kiaak
 
     namespace Core
     {
-        class Camera; // Forward declaration
+        class Camera;
     }
 
     class Engine
@@ -60,6 +61,9 @@ namespace Kiaak
 
         // Selection system
         Core::GameObject *selectedGameObject;
+
+        // Editor system
+        std::unique_ptr<Kiaak::EditorCore> editorCore;
 
         // Game loop functions
         void ProcessInput();
