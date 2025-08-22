@@ -40,6 +40,8 @@ namespace Kiaak
             // Utility
             std::vector<std::string> GetSceneNames() const;
             size_t GetSceneCount() const;
+            // Reverse lookup helper (returns empty string if not found)
+            std::string GetSceneName(Scene *scene) const;
 
         private:
             std::unordered_map<std::string, std::unique_ptr<Scene>> m_scenes;

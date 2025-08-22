@@ -38,6 +38,13 @@ namespace Kiaak
         // Scene utilities
         size_t GetGameObjectCount() const;
 
+        // Editor/play mode control
+        bool IsEditorMode() const { return editorMode; }
+        void TogglePlayPause(); // toggles between editor & play (replaces old 'E' key hotkey)
+
+        // Global accessor (lightweight singleton pattern for UI callbacks)
+        static Engine *Get() { return s_instance; }
+
     private:
         // Core systems
         bool isRunning;
@@ -90,6 +97,9 @@ namespace Kiaak
         glm::vec2 ScreenToWorld(double mouseX, double mouseY, Core::Camera *cam) const;
         void HandleSpriteClickDetection();
         void RenderSelectionGizmo();
+
+        // Singleton instance pointer
+        static Engine *s_instance;
     };
 
 } // namespace Kiaak

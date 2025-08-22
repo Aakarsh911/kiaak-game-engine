@@ -81,6 +81,7 @@ namespace Kiaak
             std::string m_name;
             bool m_active = true;
             uint32_t m_id;
+            bool m_started = false; // whether Start() has been invoked
 
             // Hierarchy
             GameObject *m_parent = nullptr;
@@ -119,7 +120,11 @@ namespace Kiaak
             T *componentPtr = component.get();
 
             AddComponentInternal(std::move(component));
-
+            // If this GameObject has already started, immediately start the new component
+            if (m_started && componentPtr->IsEnabled())
+            {
+                componentPtr->Start();
+            }
             return componentPtr;
         }
 

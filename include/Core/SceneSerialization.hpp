@@ -25,6 +25,9 @@ namespace Kiaak
         public:
             static bool SaveAllScenes(SceneManager *manager, const std::string &filePath);
             static bool LoadAllScenes(SceneManager *manager, const std::string &filePath);
+            // New per-scene API (writes one file per scene)
+            static bool SaveSceneToFile(Scene *scene, const std::string &filePath);
+            static bool LoadSceneFromFile(SceneManager *manager, const std::string &filePath); // derives scene name from file
         };
 
     }

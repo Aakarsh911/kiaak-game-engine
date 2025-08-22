@@ -19,6 +19,8 @@ namespace Kiaak
         static void BeginFrame();
         static void EndFrame();
 
+        static void RenderProjectBar(Core::SceneManager *sceneManager); // new project UI
+                                                                        // (Top bar height internally tracked; other panels offset accordingly)
         static void RenderSceneHierarchy(Core::SceneManager *sceneManager, Core::Scene *&activeScene, Core::GameObject *&selectedObject);
         static void RenderInspector(Core::SceneManager *sceneManager, Core::GameObject *selectedObject);
         static void RenderAssetBrowser();

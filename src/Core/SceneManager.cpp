@@ -77,6 +77,11 @@ namespace Kiaak
 
             std::cout << "Switching from scene '" << m_currentSceneName << "' to '" << sceneName << "'" << std::endl;
             SetCurrentScene(sceneName);
+            if (m_currentScene && !m_currentScene->GetAllGameObjects().empty())
+            {
+                // Ensure scene Start called only once; rely on Scene::Start internal guard.
+                m_currentScene->Start();
+            }
             return true;
         }
 
@@ -169,6 +174,18 @@ namespace Kiaak
         size_t SceneManager::GetSceneCount() const
         {
             return m_scenes.size();
+        }
+
+        std::string SceneManager::GetSceneName(Scene *scene) const
+        {
+            if (!scene)
+                return {};
+            for (auto &p : m_scenes)
+            {
+                if (p.second.get() == scene)
+                    return p.first;
+            }
+            return {};
         }
 
         void SceneManager::SetCurrentScene(const std::string &sceneName)

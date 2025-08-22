@@ -1,5 +1,6 @@
 #include "Editor/EditorCore.hpp"
 #include "Editor/EditorUI.hpp"
+#include "Engine.hpp"
 
 namespace Kiaak
 {
@@ -27,15 +28,24 @@ namespace Kiaak
 
     void EditorCore::Render()
     {
+        // Always draw top bar (contains play/pause + project controls)
         if (m_sceneManager)
         {
-            Core::Scene *sceneRef = m_scene;
-            EditorUI::RenderSceneHierarchy(m_sceneManager, sceneRef, m_selectedObject);
-            if (sceneRef != m_scene)
-                m_scene = sceneRef;
+            EditorUI::RenderProjectBar(m_sceneManager);
         }
-        EditorUI::RenderInspector(m_sceneManager, m_selectedObject);
-        EditorUI::RenderAssetBrowser();
+        // Only show editor panels when in editor mode (play mode hides hierarchy/inspector/asset browser)
+        if (Engine::Get() && Engine::Get()->IsEditorMode())
+        {
+            if (m_sceneManager)
+            {
+                Core::Scene *sceneRef = m_scene;
+                EditorUI::RenderSceneHierarchy(m_sceneManager, sceneRef, m_selectedObject);
+                if (sceneRef != m_scene)
+                    m_scene = sceneRef;
+            }
+            EditorUI::RenderInspector(m_sceneManager, m_selectedObject);
+            EditorUI::RenderAssetBrowser();
+        }
     }
 
     void EditorCore::SetSelectedObject(Core::GameObject *obj)

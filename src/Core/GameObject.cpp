@@ -26,6 +26,7 @@ namespace Kiaak
             if (!m_active)
                 return;
 
+            m_started = true;
             for (auto &component : m_components)
             {
                 if (component->IsEnabled())

@@ -5,13 +5,16 @@
 #include "Graphics/SpriteRenderer.hpp"
 #include "Core/Camera.hpp"
 #include "Core/SceneSerialization.hpp"
+#include "Core/Project.hpp"
 #include <GLFW/glfw3.h>
+#include "Engine.hpp"
 #include <functional>
 #include <filesystem>
 #include <vector>
 #include <string>
 #if defined(__APPLE__)
 extern "C" const char *Kiaak_ShowOpenFileDialog();
+extern "C" const char *Kiaak_ShowOpenDirectoryDialog();
 #endif
 
 namespace Kiaak
@@ -21,7 +24,14 @@ namespace Kiaak
     static std::vector<std::string> g_assetFiles;
     static std::filesystem::file_time_type g_lastAssetScanTime{};
     static double g_lastAssetRefreshCheck = 0.0; // seconds since start
-    static const char *kAssetDir = "assets";
+    static const char *kAssetDir = "assets";     // fallback when no project
+
+    static std::string CurrentAssetRoot()
+    {
+        if (Core::Project::HasPath())
+            return Core::Project::GetAssetsPath();
+        return kAssetDir;
+    }
 
     void EditorUI::RefreshAssetList(bool force)
     {
@@ -35,11 +45,12 @@ namespace Kiaak
             g_lastAssetRefreshCheck = now;
         }
         g_assetFiles.clear();
+        auto root = CurrentAssetRoot();
         try
         {
-            if (fs::exists(kAssetDir) && fs::is_directory(kAssetDir))
+            if (fs::exists(root) && fs::is_directory(root))
             {
-                for (auto &entry : fs::recursive_directory_iterator(kAssetDir))
+                for (auto &entry : fs::recursive_directory_iterator(root))
                 {
                     if (!entry.is_regular_file())
                         continue;
@@ -49,15 +60,12 @@ namespace Kiaak
                     for (auto &c : ext)
                         c = (char)tolower(c);
                     if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".bmp" || ext == ".tga")
-                    {
                         g_assetFiles.push_back(path.generic_string());
-                    }
                 }
             }
         }
         catch (...)
         {
-            // swallow exceptions (e.g., permissions)
         }
         std::sort(g_assetFiles.begin(), g_assetFiles.end());
     }
@@ -109,9 +117,10 @@ namespace Kiaak
     // Unified hierarchy with scenes + objects
     void EditorUI::RenderSceneHierarchy(Core::SceneManager *sceneManager, Core::Scene *&activeScene, Core::GameObject *&selectedObject)
     {
-        ImGui::SetNextWindowPos(ImVec2(0, 0));
-        ImGui::SetNextWindowSize(ImVec2(320, ImGui::GetIO().DisplaySize.y - 200));
-        if (ImGui::Begin("Scene Hierarchy", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize))
+        constexpr float kTopBarHeight = 34.0f; // must match top bar height
+        ImGui::SetNextWindowPos(ImVec2(0, kTopBarHeight));
+        ImGui::SetNextWindowSize(ImVec2(320, ImGui::GetIO().DisplaySize.y - 200 - kTopBarHeight));
+        if (ImGui::Begin("Scene Hierarchy", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse))
         {
             if (sceneManager)
             {
@@ -127,8 +136,13 @@ namespace Kiaak
                             sceneManager->SwitchToScene(name);
                             activeScene = sceneManager->GetCurrentScene();
                             selectedObject = nullptr;
-                            // Auto-save after structural change
-                            Core::SceneSerialization::SaveAllScenes(sceneManager, "saved_scenes.txt");
+                            // Per-scene save
+                            if (Core::Project::HasPath())
+                            {
+                                auto sn = sceneManager->GetSceneName(activeScene);
+                                if (!sn.empty())
+                                    Core::SceneSerialization::SaveSceneToFile(activeScene, Core::Project::GetScenesPath() + "/" + sn + ".scene");
+                            }
                         }
                     }
                     if (ImGui::MenuItem("Create Camera"))
@@ -142,7 +156,12 @@ namespace Kiaak
                             // Do not globally SetActive() here (editor camera remains active in editor mode)
                             activeScene->SetDesignatedCamera(cam);
                             selectedObject = go;
-                            Core::SceneSerialization::SaveAllScenes(sceneManager, "saved_scenes.txt");
+                            if (Core::Project::HasPath())
+                            {
+                                auto sn = sceneManager->GetSceneName(activeScene);
+                                if (!sn.empty())
+                                    Core::SceneSerialization::SaveSceneToFile(activeScene, Core::Project::GetScenesPath() + "/" + sn + ".scene");
+                            }
                         }
                     }
                     if (ImGui::BeginMenu("Create Sprite"))
@@ -163,7 +182,12 @@ namespace Kiaak
                                     go->AddComponent<Graphics::SpriteRenderer>(path.c_str());
                                     go->GetTransform()->SetPosition(0, 0, 0);
                                     selectedObject = go;
-                                    Core::SceneSerialization::SaveAllScenes(sceneManager, "saved_scenes.txt");
+                                    if (Core::Project::HasPath())
+                                    {
+                                        auto sn = sceneManager->GetSceneName(activeScene);
+                                        if (!sn.empty())
+                                            Core::SceneSerialization::SaveSceneToFile(activeScene, Core::Project::GetScenesPath() + "/" + sn + ".scene");
+                                    }
                                 }
                             }
                         }
@@ -311,21 +335,30 @@ namespace Kiaak
                     {
                         activeScene->RemoveGameObject(go->GetName());
                     }
-                    Core::SceneSerialization::SaveAllScenes(sceneManager, "saved_scenes.txt");
+                    if (Core::Project::HasPath())
+                    {
+                        auto sn = sceneManager->GetSceneName(activeScene);
+                        if (!sn.empty())
+                            Core::SceneSerialization::SaveSceneToFile(activeScene, Core::Project::GetScenesPath() + "/" + sn + ".scene");
+                    }
                 }
                 if (!scenesPendingDelete.empty())
                 {
-                    for (auto &sn : scenesPendingDelete)
+                    for (auto &snDel : scenesPendingDelete)
                     {
-                        bool wasCurrent = (sceneManager->GetCurrentScene() && sceneManager->GetCurrentScene() == sceneManager->GetScene(sn));
-                        if (sceneManager->DeleteScene(sn))
+                        bool wasCurrent = (sceneManager->GetCurrentScene() && sceneManager->GetCurrentScene() == sceneManager->GetScene(snDel));
+                        if (sceneManager->DeleteScene(snDel))
                         {
-                            // If we deleted selected object's scene, clear selection
                             if (wasCurrent)
                                 selectedObject = nullptr;
+                            // Remove file on disk
+                            if (Core::Project::HasPath())
+                            {
+                                std::filesystem::remove(Core::Project::GetScenesPath() + "/" + snDel + ".scene");
+                            }
                         }
                     }
-                    Core::SceneSerialization::SaveAllScenes(sceneManager, "saved_scenes.txt");
+                    // No bulk save needed; each deletion handled.
                 }
             }
         }
@@ -334,10 +367,11 @@ namespace Kiaak
 
     void EditorUI::RenderInspector(Core::SceneManager *sceneManager, Core::GameObject *selectedObject)
     {
-        ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x - 300, 0));
-        ImGui::SetNextWindowSize(ImVec2(300, ImGui::GetIO().DisplaySize.y - 200));
+        constexpr float kTopBarHeight = 34.0f; // must match top bar height
+        ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x - 300, kTopBarHeight));
+        ImGui::SetNextWindowSize(ImVec2(300, ImGui::GetIO().DisplaySize.y - 200 - kTopBarHeight));
 
-        if (ImGui::Begin("Inspector", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize))
+        if (ImGui::Begin("Inspector", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse))
         {
             if (selectedObject)
             {
@@ -365,8 +399,26 @@ namespace Kiaak
                         selectedObject->SetName(newName);
                         if (sceneManager)
                         {
-                            Core::SceneSerialization::SaveAllScenes(sceneManager, "saved_scenes.txt");
+                            if (Core::Project::HasPath())
+                            {
+                                // Save only the owning scene of this object
+                                for (auto &nm : sceneManager->GetSceneNames())
+                                {
+                                    auto *sc = sceneManager->GetScene(nm);
+                                    if (!sc)
+                                        continue;
+                                    for (auto *go : sc->GetAllGameObjects())
+                                    {
+                                        if (go == selectedObject)
+                                        {
+                                            Core::SceneSerialization::SaveSceneToFile(sc, Core::Project::GetScenesPath() + "/" + nm + ".scene");
+                                            goto rename_saved;
+                                        }
+                                    }
+                                }
+                            }
                         }
+                    rename_saved:;
                     }
                 }
                 ImGui::PopItemWidth();
@@ -381,6 +433,22 @@ namespace Kiaak
                     if (ImGui::DragFloat3("Position", &pos.x, 0.1f))
                     {
                         transform->SetPosition(pos);
+                        if (sceneManager && Core::Project::HasPath())
+                        {
+                            for (auto &nm : sceneManager->GetSceneNames())
+                            {
+                                auto *sc = sceneManager->GetScene(nm);
+                                if (!sc)
+                                    continue;
+                                for (auto *go : sc->GetAllGameObjects())
+                                    if (go == selectedObject)
+                                    {
+                                        Core::SceneSerialization::SaveSceneToFile(sc, Core::Project::GetScenesPath() + "/" + nm + ".scene");
+                                        goto pos_saved;
+                                    }
+                            }
+                        }
+                    pos_saved:;
                     }
 
                     // Editable Rotation (degrees). For 2D we mainly care about Z, but expose all 3.
@@ -388,19 +456,48 @@ namespace Kiaak
                     if (ImGui::DragFloat3("Rotation", &rot.x, 0.5f))
                     {
                         transform->SetRotation(rot);
+                        if (sceneManager && Core::Project::HasPath())
+                        {
+                            for (auto &nm : sceneManager->GetSceneNames())
+                            {
+                                auto *sc = sceneManager->GetScene(nm);
+                                if (!sc)
+                                    continue;
+                                for (auto *go : sc->GetAllGameObjects())
+                                    if (go == selectedObject)
+                                    {
+                                        Core::SceneSerialization::SaveSceneToFile(sc, Core::Project::GetScenesPath() + "/" + nm + ".scene");
+                                        goto rot_saved;
+                                    }
+                            }
+                        }
+                    rot_saved:;
                     }
 
                     // Editable Scale (uniform or per-axis). Ensure scale not zero to avoid degenerate matrix.
                     glm::vec3 scl = transform->GetScale();
                     if (ImGui::DragFloat3("Scale", &scl.x, 0.05f, 0.0001f, 1000.0f))
                     {
-                        // Prevent negative zero issues; optionally clamp extremely small values.
                         for (int i = 0; i < 3; ++i)
-                        {
                             if (scl[i] == 0.0f)
                                 scl[i] = 0.0001f;
-                        }
                         transform->SetScale(scl);
+                        if (sceneManager && Core::Project::HasPath())
+                        {
+                            for (auto &nm : sceneManager->GetSceneNames())
+                            {
+                                auto *sc = sceneManager->GetScene(nm);
+                                if (!sc)
+                                    continue;
+                                for (auto *go : sc->GetAllGameObjects())
+                                    if (go == selectedObject)
+                                    {
+                                        Core::SceneSerialization::SaveSceneToFile(sc, Core::Project::GetScenesPath() + "/" + nm + ".scene");
+                                        goto scale_saved;
+                                    }
+                            }
+                        }
+                    scale_saved:;
                     }
 
                     ImGui::Separator();
@@ -459,15 +556,18 @@ namespace Kiaak
                             {
                                 if (checkbox)
                                 {
-                                    // Assign this camera, remove previous implicitly
                                     owningScene->SetDesignatedCamera(cam);
                                 }
                                 else if (isDesignated)
                                 {
-                                    // Unassign
                                     owningScene->SetDesignatedCamera(nullptr);
                                 }
-                                Core::SceneSerialization::SaveAllScenes(sceneManager, "saved_scenes.txt");
+                                if (Core::Project::HasPath())
+                                {
+                                    auto nm = sceneManager->GetSceneName(owningScene);
+                                    if (!nm.empty())
+                                        Core::SceneSerialization::SaveSceneToFile(owningScene, Core::Project::GetScenesPath() + "/" + nm + ".scene");
+                                }
                             }
                         }
                     }
@@ -481,12 +581,95 @@ namespace Kiaak
         ImGui::End();
     }
 
+    void EditorUI::RenderProjectBar(Core::SceneManager *sceneManager)
+    {
+        constexpr float kTopBarHeight = 34.0f;
+        ImGui::SetNextWindowPos(ImVec2(0, 0));
+        ImGui::SetNextWindowSize(ImVec2(ImGui::GetIO().DisplaySize.x, kTopBarHeight));
+        ImGuiWindowFlags flags = ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
+        if (ImGui::Begin("TopBar", nullptr, flags))
+        {
+            if (!Core::Project::HasPath())
+            {
+                ImGui::TextColored(ImVec4(1, 0.6f, 0, 1), "No project selected");
+                ImGui::SameLine();
+            }
+            if (ImGui::Button("Open Project"))
+            {
+#if defined(__APPLE__)
+                if (const char *dir = Kiaak_ShowOpenDirectoryDialog())
+                {
+                    Core::Project::SetPath(dir);
+                    Core::Project::EnsureStructure();
+                    if (sceneManager)
+                    {
+                        for (auto &nm : sceneManager->GetSceneNames())
+                        {
+                            auto *sc = sceneManager->GetScene(nm);
+                            if (sc)
+                                Core::SceneSerialization::SaveSceneToFile(sc, Core::Project::GetScenesPath() + "/" + nm + ".scene");
+                        }
+                    }
+                    RefreshAssetList(true);
+                }
+#else
+                // TODO: other platforms
+#endif
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Create Project"))
+            {
+#if defined(__APPLE__)
+                if (const char *dir = Kiaak_ShowOpenDirectoryDialog())
+                {
+                    Core::Project::SetPath(dir);
+                    Core::Project::EnsureStructure();
+                    if (sceneManager && sceneManager->GetSceneNames().empty())
+                        sceneManager->CreateScene("MainScene");
+                    // Persist current scenes
+                    if (sceneManager)
+                    {
+                        for (auto &nm : sceneManager->GetSceneNames())
+                        {
+                            auto *sc = sceneManager->GetScene(nm);
+                            if (sc)
+                                Core::SceneSerialization::SaveSceneToFile(sc, Core::Project::GetScenesPath() + "/" + nm + ".scene");
+                        }
+                    }
+                    RefreshAssetList(true);
+                }
+#else
+#endif
+            }
+
+            float windowW = ImGui::GetWindowSize().x;
+            // Position button nearer the top (2px padding)
+            ImGui::SetCursorPos(ImVec2(windowW * 0.5f - 40.0f, 4.0f));
+            if (auto *eng = Engine::Get())
+            {
+                const char *label = eng->IsEditorMode() ? "Play" : "Pause";
+                if (ImGui::Button(label, ImVec2(80, kTopBarHeight - 8)))
+                {
+                    eng->TogglePlayPause();
+                }
+            }
+        }
+        ImGui::End();
+    }
+
     void EditorUI::RenderAssetBrowser()
     {
         ImGui::SetNextWindowPos(ImVec2(0, ImGui::GetIO().DisplaySize.y - 200));
         ImGui::SetNextWindowSize(ImVec2(ImGui::GetIO().DisplaySize.x, 200));
-        if (ImGui::Begin("Asset Browser", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize))
+        if (ImGui::Begin("Asset Browser", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse))
         {
+            if (!Core::Project::HasPath())
+            {
+                ImGui::TextWrapped("No project selected. Use Open/Create Project to choose a folder.");
+                ImGui::End();
+                return;
+            }
+
             static char importSource[512] = ""; // absolute or relative path to existing file
             static char importName[256] = "";   // optional target filename
             static std::string importStatus;
@@ -560,10 +743,11 @@ namespace Kiaak
                             else
                             {
                                 fs::path targetDir(kAssetDir);
+                                if (Core::Project::HasPath())
+                                    targetDir = Core::Project::GetAssetsPath();
                                 if (!fs::exists(targetDir))
                                     fs::create_directories(targetDir);
                                 fs::path targetName = (strlen(importName) > 0) ? fs::path(importName) : src.filename();
-                                // ensure extension present if user removed
                                 if (targetName.extension().empty())
                                     targetName += src.extension();
                                 fs::path target = targetDir / targetName;
@@ -592,7 +776,7 @@ namespace Kiaak
             if (doRefresh)
                 RefreshAssetList(true);
 
-            RefreshAssetList(); // background refresh attempt
+            RefreshAssetList();
             const auto &assets = GetAssetFiles();
             ImGui::Separator();
             ImGui::BeginChild("AssetList");
@@ -600,7 +784,7 @@ namespace Kiaak
             {
                 if (ImGui::Selectable(a.c_str()))
                 {
-                    // Potential future: preview or drag-drop
+                    // Handle asset selection
                 }
             }
             ImGui::EndChild();

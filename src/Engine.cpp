@@ -4,6 +4,7 @@
 #include "Editor/EditorCore.hpp"
 #include "Editor/EditorUI.hpp"
 #include "Core/SceneSerialization.hpp"
+#include "Core/Project.hpp"
 #include "imgui.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -11,11 +12,18 @@
 #include <iostream>
 #include <vector>
 #include <algorithm>
+#include <filesystem>
+#include <fstream>
 
 namespace Kiaak
 {
 
-    Engine::Engine() : isRunning(false), editorCamera(nullptr), activeSceneCamera(nullptr), editorMode(true), rightMouseDragging(false), editorCameraInitialPosition(0.0f, 0.0f, 5.0f), editorCameraInitialZoom(1.0f), selectedGameObject(nullptr), editorCore(nullptr) {}
+    Engine *Engine::s_instance = nullptr;
+
+    Engine::Engine() : isRunning(false), editorCamera(nullptr), activeSceneCamera(nullptr), editorMode(true), rightMouseDragging(false), editorCameraInitialPosition(0.0f, 0.0f, 5.0f), editorCameraInitialZoom(1.0f), selectedGameObject(nullptr), editorCore(nullptr)
+    {
+        s_instance = this;
+    }
     Engine::~Engine()
     {
         Shutdown();
@@ -37,15 +45,49 @@ namespace Kiaak
 
         timer = std::make_unique<Timer>();
         Input::Initialize(window->GetNativeWindow());
-        // Scene manager & attempt to load saved scenes
         sceneManager = std::make_unique<Core::SceneManager>();
-        if (!Core::SceneSerialization::LoadAllScenes(sceneManager.get(), "saved_scenes.txt"))
+
+        // Attempt to restore last opened project
+        if (!Core::Project::HasPath())
+        {
+            std::ifstream projIn("last_project.txt");
+            if (projIn.is_open())
+            {
+                std::string pathLine;
+                std::getline(projIn, pathLine);
+                if (!pathLine.empty() && std::filesystem::exists(pathLine))
+                {
+                    Core::Project::SetPath(pathLine);
+                    Core::Project::EnsureStructure();
+                }
+            }
+        }
+
+        // Project-based load: if a project path is set, load all *.scene files inside its scenes folder.
+        if (Core::Project::HasPath())
+        {
+            auto scenesPath = Core::Project::GetScenesPath();
+            if (std::filesystem::exists(scenesPath))
+            {
+                for (auto &entry : std::filesystem::directory_iterator(scenesPath))
+                {
+                    if (!entry.is_regular_file())
+                        continue;
+                    auto path = entry.path();
+                    if (path.extension() == ".scene")
+                    {
+                        Core::SceneSerialization::LoadSceneFromFile(sceneManager.get(), path.string());
+                    }
+                }
+            }
+        }
+        // Fallback: if still no scenes, create default
+        if (sceneManager->GetSceneNames().empty())
         {
             sceneManager->CreateScene("MainScene");
         }
         auto *currentScene = sceneManager->GetCurrentScene();
 
-        // CreateGameObjectDemo(); // demo content disabled
         CreateEditorCamera();
 
         editorCore = std::make_unique<Kiaak::EditorCore>();
@@ -89,10 +131,7 @@ namespace Kiaak
             isRunning = false;
         }
 
-        if (Input::IsKeyPressed(GLFW_KEY_E))
-        {
-            ToggleEditorMode();
-        }
+        // Removed 'E' key toggle; play/pause now handled by top bar button.
 
         Input::Update();
     }
@@ -134,16 +173,18 @@ namespace Kiaak
             sc->Render();
         }
 
-        if (editorMode && editorCore)
+        if (editorCore)
         {
-            RenderSelectionGizmo();
-
             EditorUI::BeginFrame();
-            editorCore->Render();
-            // Sync engine-side selection (used for gizmo) with editor selection (updated via hierarchy clicks)
+            if (editorMode)
             {
+                RenderSelectionGizmo();
+            }
+            editorCore->Render(); // internally hides editor-only panels in play mode
+            if (editorMode)
+            {
+                // Sync engine-side selection (used for gizmo) with editor selection (updated via hierarchy clicks)
                 Core::GameObject *editorSel = editorCore->GetSelectedObject();
-                // If current scene changed, validate selection still belongs; else clear.
                 if (editorSel)
                 {
                     auto *sc = GetCurrentScene();
@@ -257,10 +298,23 @@ namespace Kiaak
     {
         if (isRunning)
         {
-            // Save out scenes prototype
-            if (sceneManager)
+            if (sceneManager && Core::Project::HasPath())
             {
-                Core::SceneSerialization::SaveAllScenes(sceneManager.get(), "saved_scenes.txt");
+                auto scenesPath = Core::Project::GetScenesPath();
+                std::filesystem::create_directories(scenesPath);
+                for (auto &name : sceneManager->GetSceneNames())
+                {
+                    auto *sc = sceneManager->GetScene(name);
+                    if (!sc)
+                        continue;
+                    Core::SceneSerialization::SaveSceneToFile(sc, scenesPath + "/" + name + ".scene");
+                }
+                // Persist project path
+                std::ofstream projOut("last_project.txt", std::ios::trunc);
+                if (projOut.is_open())
+                {
+                    projOut << Core::Project::GetPath();
+                }
             }
             sceneManager.reset();
             renderer.reset();
@@ -282,6 +336,11 @@ namespace Kiaak
         {
             SwitchToPlayMode();
         }
+    }
+
+    void Engine::TogglePlayPause()
+    {
+        ToggleEditorMode();
     }
 
     void Engine::HandleEditorInput(double deltaTime)

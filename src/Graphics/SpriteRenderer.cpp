@@ -2,6 +2,7 @@
 #include "Core/GameObject.hpp"
 #include "Core/Transform.hpp"
 #include "Core/Camera.hpp"
+#include "Core/Project.hpp"
 #include <glad/glad.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include <iostream>
@@ -160,9 +161,21 @@ namespace Kiaak
             try
             {
                 s_spriteShader = std::make_shared<Shader>();
-                if (!s_spriteShader->LoadFromFile("assets/shaders/basic.vert", "assets/shaders/basic.frag"))
+                std::string vertPath = "assets/shaders/basic.vert";
+                std::string fragPath = "assets/shaders/basic.frag";
+                if (Core::Project::HasPath())
                 {
-                    std::cerr << "Failed to load sprite shader files\n";
+                    std::string projVert = Core::Project::GetAssetsPath() + "/shaders/basic.vert";
+                    std::string projFrag = Core::Project::GetAssetsPath() + "/shaders/basic.frag";
+                    if (std::filesystem::exists(projVert) && std::filesystem::exists(projFrag))
+                    {
+                        vertPath = projVert;
+                        fragPath = projFrag;
+                    }
+                }
+                if (!s_spriteShader->LoadFromFile(vertPath, fragPath))
+                {
+                    std::cerr << "Failed to load sprite shader files from " << vertPath << " and " << fragPath << "\n";
                     s_spriteShader = nullptr;
                 }
             }
