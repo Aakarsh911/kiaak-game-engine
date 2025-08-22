@@ -96,6 +96,19 @@ namespace Kiaak
 
         const glm::mat4 &Camera::GetProjection() const
         {
+            // If the framebuffer/viewport size changed, the aspect changed → rebuild P.
+            static int lastVPW = -1, lastVPH = -1; // shared across cams is fine for 2D/editor
+            GLint vp[4] = {0, 0, 0, 0};
+            glGetIntegerv(GL_VIEWPORT, vp);
+            const int vpw = vp[2];
+            const int vph = vp[3];
+            if (vpw != lastVPW || vph != lastVPH)
+            {
+                lastVPW = vpw;
+                lastVPH = vph;
+                m_projDirty = true; // (mutable) safe to flip inside const
+            }
+
             if (m_projDirty)
             {
                 RecalculateProjection();

@@ -340,14 +340,22 @@ namespace Kiaak
         if (!cam)
             return glm::vec2(0.0f);
 
-        // Convert to NDC: X in [-1,1], Y in [-1,1] with Y up (GL-style)
-        const float w = static_cast<float>(window->GetWidth());
-        const float h = static_cast<float>(window->GetHeight());
-        if (w <= 0.0f || h <= 0.0f)
+        // We get mouse coords in logical window space. Projection & viewport use framebuffer (pixel) size.
+        // Scale mouse to framebuffer space before converting to NDC to handle HiDPI / Retina.
+        const double logicalW = static_cast<double>(window->GetWidth());
+        const double logicalH = static_cast<double>(window->GetHeight());
+        const double fbW = static_cast<double>(window->GetFramebufferWidth());
+        const double fbH = static_cast<double>(window->GetFramebufferHeight());
+        if (logicalW <= 0.0 || logicalH <= 0.0 || fbW <= 0.0 || fbH <= 0.0)
             return glm::vec2(0.0f);
 
-        const float x_ndc = static_cast<float>((mouseX / w) * 2.0 - 1.0);
-        const float y_ndc = static_cast<float>(1.0 - (mouseY / h) * 2.0); // flip Y (window origin top-left)
+        const double scaleX = fbW / logicalW;
+        const double scaleY = fbH / logicalH;
+        const double mouseX_fb = mouseX * scaleX;
+        const double mouseY_fb = mouseY * scaleY;
+
+        const float x_ndc = static_cast<float>((mouseX_fb / fbW) * 2.0 - 1.0);
+        const float y_ndc = static_cast<float>(1.0 - (mouseY_fb / fbH) * 2.0); // flip Y (window origin top-left)
 
         // Unproject using inverse VP. Z=0 puts us on the "middle" clip-depth; good enough for 2D at world Z=0.
         const glm::mat4 invVP = glm::inverse(cam->GetViewProjection());

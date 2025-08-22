@@ -64,9 +64,9 @@ namespace Kiaak
             return false;
         }
 
-        int width = targetWindow->GetWidth();
-        int height = targetWindow->GetHeight();
-        glViewport(0, 0, width, height);
+        int fbw = targetWindow->GetFramebufferWidth();
+        int fbh = targetWindow->GetFramebufferHeight();
+        glViewport(0, 0, fbw, fbh);
 
         return true;
     }
@@ -76,7 +76,17 @@ namespace Kiaak
         if (!isInitialized)
             return;
 
-        // Clear the screen at the start of each frame
+        if (targetWindow)
+        {
+            int fbw = targetWindow->GetFramebufferWidth();
+            int fbh = targetWindow->GetFramebufferHeight();
+            if (fbw <= 0)
+                fbw = 1;
+            if (fbh <= 0)
+                fbh = 1;
+            glViewport(0, 0, fbw, fbh);
+        }
+
         glClearColor(r, g, b, a);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     }
