@@ -110,6 +110,14 @@ namespace Kiaak
     {
         while (isRunning && !window->ShouldClose())
         {
+            // Poll OS events at the very start of the frame so newly generated
+            // input (mouse presses, moves, scroll) is visible to game/editor logic
+            // BEFORE we evaluate Pressed/Held logic and before PostFrame() promotes
+            // Pressed -> Held. Previously we polled at the end, causing Pressed to
+            // be converted to Held in the same frame it arrived (never observable)
+            // which broke one-frame interactions like starting a drag.
+            window->Update(); // glfwPollEvents()
+
             timer->update();
             ProcessInput();
 
@@ -120,7 +128,8 @@ namespace Kiaak
 
             Update(timer->getDeltaTime());
             Render();
-            window->Update();
+            // Advance input states AFTER logic & rendering so Pressed is visible for one full frame
+            Input::PostFrame();
         }
     }
 
@@ -484,8 +493,9 @@ namespace Kiaak
 
     void Engine::HandleSpriteClickDetection()
     {
-        // Use Held instead of Pressed because Input::Update() (called in ProcessInput) converts Pressed->Held
-        // before we reach this function in Update(). Using Pressed here would miss the click.
+        // Skip while dragging gizmo
+        if (gizmoDragging)
+            return;
         if (!Input::IsMouseButtonHeld(MouseButton::Left))
             return;
 
@@ -506,8 +516,8 @@ namespace Kiaak
         // Convert mouse position to world coordinates
         glm::vec2 worldPos = ScreenToWorld(mouseX, mouseY, cam);
 
-        // Debug logging
-        std::cout << "Mouse: (" << mouseX << ", " << mouseY << ") -> World: (" << worldPos.x << ", " << worldPos.y << ")" << std::endl;
+        // Debug (optional)
+        // std::cout << "Mouse: (" << mouseX << ", " << mouseY << ") -> World: (" << worldPos.x << ", " << worldPos.y << ")" << std::endl;
 
         // Check all GameObjects with SpriteRenderer components
         auto *currentScene = GetCurrentScene();
@@ -604,7 +614,7 @@ namespace Kiaak
         if (!transform || !spriteRenderer)
             return; // gizmo only for sprites (for now)
 
-        // --- Compute world-space AABB of the sprite (respects position/scale/rotation) ---
+        // Compute world-space AABB
         const glm::vec2 sz = spriteRenderer->GetSize(); // local quad size in world units
         const glm::vec2 half = 0.5f * sz;
         const glm::mat4 M = transform->GetModelMatrix(); // world transform
@@ -623,7 +633,7 @@ namespace Kiaak
         const glm::vec2 ctr = {(minX + maxX) * 0.5f, (minY + maxY) * 0.5f};
         const float z = transform->GetPosition().z + 0.02f; // nudge above sprite to avoid z-fighting
 
-        // --- Make line thickness ~2px in world units so it stays constant with zoom ---
+        // Thickness ~2px in world units
         float thickness = 0.01f; // fallback
         if (auto *cam = Core::Camera::GetActive(); cam && window)
         {
@@ -632,9 +642,9 @@ namespace Kiaak
             thickness = std::max(perPixelY * 2.0f, perPixelY); // ~2px
         }
 
-        const glm::vec4 gizmoColor(1.0f, 0.6f, 0.05f, 1.0f); // orange
+        const glm::vec4 gizmoColor(1.0f, 0.6f, 0.05f, 1.0f);
 
-        // --- Draw 4 thin quads as an outline (does NOT mutate the selected object) ---
+        // Outline
         // Top
         renderer->DrawQuad(glm::vec3(ctr.x, maxY + thickness * 0.5f, z),
                            glm::vec2(width + thickness * 2.0f, thickness),
@@ -652,12 +662,64 @@ namespace Kiaak
                            glm::vec2(thickness, height),
                            gizmoColor);
 
-        // --- Optional: small corner handles (comment out if not needed) ---
+        // Corner handles
         const float handle = thickness * 3.0f;
         renderer->DrawQuad(glm::vec3(minX, minY, z), glm::vec2(handle, handle), gizmoColor);
         renderer->DrawQuad(glm::vec3(maxX, minY, z), glm::vec2(handle, handle), gizmoColor);
         renderer->DrawQuad(glm::vec3(maxX, maxY, z), glm::vec2(handle, handle), gizmoColor);
         renderer->DrawQuad(glm::vec3(minX, maxY, z), glm::vec2(handle, handle), gizmoColor);
+
+        // Drag translate / click outside to deselect
+        auto *cam = Core::Camera::GetActive();
+        if (!cam)
+            return;
+        double mx, my;
+        Input::GetMousePosition(mx, my);
+        glm::vec2 world = ScreenToWorld(mx, my, cam);
+        bool inside = (world.x >= minX && world.x <= maxX && world.y >= minY && world.y <= maxY);
+        bool leftPressed = Input::IsMouseButtonPressed(MouseButton::Left);
+        bool leftHeld = Input::IsMouseButtonHeld(MouseButton::Left);
+        bool leftReleased = Input::IsMouseButtonReleased(MouseButton::Left);
+        if (!gizmoDragging && leftPressed && !inside && !ImGui::GetIO().WantCaptureMouse)
+        {
+            // Clicked outside: deselect
+            selectedGameObject = nullptr;
+            if (editorCore)
+                editorCore->SetSelectedObject(nullptr);
+            return; // stop drawing interaction this frame
+        }
+        if (!gizmoDragging && leftPressed && inside && !ImGui::GetIO().WantCaptureMouse)
+        {
+            gizmoDragging = true;
+            gizmoDragStartWorld = world;
+            gizmoOriginalPos = transform->GetPosition();
+        }
+        if (gizmoDragging)
+        {
+            if (leftHeld)
+            {
+                glm::vec2 delta = world - gizmoDragStartWorld;
+                transform->SetPosition(gizmoOriginalPos + glm::vec3(delta.x, delta.y, 0.0f));
+            }
+            if (leftReleased)
+            {
+                gizmoDragging = false;
+                if (sceneManager && Core::Project::HasPath())
+                {
+                    if (auto *sc = GetCurrentScene())
+                    {
+                        for (auto &nm : sceneManager->GetSceneNames())
+                        {
+                            if (sceneManager->GetScene(nm) == sc)
+                            {
+                                Core::SceneSerialization::SaveSceneToFile(sc, Core::Project::GetScenesPath() + "/" + nm + ".scene");
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
 } // namespace Kiaak

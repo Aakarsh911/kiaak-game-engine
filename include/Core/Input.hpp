@@ -28,6 +28,8 @@ namespace Kiaak
 
         // Update input state (call each frame)
         static void Update();
+        // Call at end of frame to advance button/key states (Pressed->Held, cleanup Released)
+        static void PostFrame();
 
         // Keyboard input
         static bool IsKeyPressed(int key);

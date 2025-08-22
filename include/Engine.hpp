@@ -77,6 +77,11 @@ namespace Kiaak
         // Editor system
         std::unique_ptr<Kiaak::EditorCore> editorCore;
 
+        // Gizmo interaction state
+        bool gizmoDragging = false;
+        glm::vec2 gizmoDragStartWorld{0.0f};
+        glm::vec3 gizmoOriginalPos{0.0f};
+
         // Game loop functions
         void ProcessInput();
         void Update(double deltaTime);

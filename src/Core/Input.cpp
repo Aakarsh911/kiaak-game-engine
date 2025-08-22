@@ -43,48 +43,31 @@ namespace Kiaak
         s_mouseDeltaY = s_mouseY - s_lastMouseY;
         s_lastMouseX = s_mouseX;
         s_lastMouseY = s_mouseY;
+    }
 
+    void Input::PostFrame()
+    {
         for (auto &[key, state] : s_keyStates)
-        {
             if (state == KeyState::Pressed)
-            {
                 state = KeyState::Held;
-            }
-        }
 
         std::vector<int> keysToErase;
         for (auto &[key, state] : s_keyStates)
-        {
             if (state == KeyState::Released)
-            {
                 keysToErase.push_back(key);
-            }
-        }
-        for (int key : keysToErase)
-        {
-            s_keyStates.erase(key);
-        }
+        for (int k : keysToErase)
+            s_keyStates.erase(k);
 
         for (auto &[button, state] : s_mouseStates)
-        {
             if (state == KeyState::Pressed)
-            {
                 state = KeyState::Held;
-            }
-        }
 
         std::vector<int> buttonsToErase;
         for (auto &[button, state] : s_mouseStates)
-        {
             if (state == KeyState::Released)
-            {
                 buttonsToErase.push_back(button);
-            }
-        }
-        for (int button : buttonsToErase)
-        {
-            s_mouseStates.erase(button);
-        }
+        for (int b : buttonsToErase)
+            s_mouseStates.erase(b);
     }
 
     bool Input::IsKeyPressed(int key)
