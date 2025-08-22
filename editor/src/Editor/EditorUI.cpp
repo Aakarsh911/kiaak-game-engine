@@ -508,6 +508,11 @@ namespace Kiaak
                 {
                     ImGui::Separator();
                     ImGui::Text("Sprite Renderer");
+                    bool enabled = sprite->IsEnabled();
+                    if (ImGui::Checkbox("Enabled##SpriteRenderer", &enabled))
+                    {
+                        sprite->SetEnabled(enabled);
+                    }
                     ImGui::Text("Has texture: %s", sprite->GetTexture() ? "Yes" : "No");
                 }
 
@@ -516,6 +521,11 @@ namespace Kiaak
                 {
                     ImGui::Separator();
                     ImGui::Text("Camera");
+                    bool camEnabled = cam->IsEnabled();
+                    if (ImGui::Checkbox("Enabled##Camera", &camEnabled))
+                    {
+                        cam->SetEnabled(camEnabled);
+                    }
                     float ortho = cam->GetOrthographicSize();
                     if (ImGui::DragFloat("Ortho Size", &ortho, 0.1f, 0.01f, 1000.0f))
                     {

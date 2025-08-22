@@ -38,7 +38,9 @@ namespace Kiaak
             void Start();
             void Update(double deltaTime);
             void FixedUpdate(double fixedDeltaTime);
-            void Render();
+            // Render scene contents. When includeDisabledForEditor is true (editor mode),
+            // components that are disabled are still drawn for authoring visibility.
+            void Render(bool includeDisabledForEditor = false);
 
             // Scene camera designation (used when entering play mode)
             void SetDesignatedCamera(Camera *cam) { m_designatedCamera = cam; }

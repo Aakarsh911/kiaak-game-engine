@@ -168,7 +168,7 @@ namespace Kiaak
 
         if (auto *sc = GetCurrentScene())
         {
-            sc->Render();
+            sc->Render(editorMode); // include disabled components when in editor mode
         }
 
         if (editorCore)

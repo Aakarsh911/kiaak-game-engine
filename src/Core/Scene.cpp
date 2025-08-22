@@ -199,18 +199,34 @@ namespace Kiaak
             }
         }
 
-        void Scene::Render()
+        void Scene::Render(bool includeDisabledForEditor)
         {
             // Render GameObjects with SpriteRenderer components
             for (auto &gameObject : m_gameObjects)
             {
-                if (gameObject->IsActive())
+                if (!gameObject->IsActive())
+                    continue;
+
+                auto *spriteRenderer = gameObject->GetComponent<Graphics::SpriteRenderer>();
+                if (!spriteRenderer)
+                    continue;
+
+                if (spriteRenderer->IsEnabled())
                 {
-                    auto *spriteRenderer = gameObject->GetComponent<Graphics::SpriteRenderer>();
-                    if (spriteRenderer && spriteRenderer->IsEnabled())
-                    {
-                        spriteRenderer->Render();
-                    }
+                    spriteRenderer->Render();
+                }
+                else if (includeDisabledForEditor)
+                {
+                    // Temporarily force a render with visual dim to indicate disabled state
+                    // (non-destructive: restore color/visibility afterwards if needed)
+                    bool prevVisible = spriteRenderer->IsVisible();
+                    glm::vec4 prevColor = spriteRenderer->GetColor();
+                    // Make sure it's visible and multiply alpha
+                    const_cast<Graphics::SpriteRenderer *>(spriteRenderer)->SetVisible(true);
+                    const_cast<Graphics::SpriteRenderer *>(spriteRenderer)->SetColor(prevColor * glm::vec4(1.0f, 1.0f, 1.0f, 0.35f));
+                    spriteRenderer->Render();
+                    const_cast<Graphics::SpriteRenderer *>(spriteRenderer)->SetColor(prevColor);
+                    const_cast<Graphics::SpriteRenderer *>(spriteRenderer)->SetVisible(prevVisible);
                 }
             }
         }
