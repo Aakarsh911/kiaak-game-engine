@@ -3,6 +3,7 @@
 #include "Core/Camera.hpp"
 #include "Editor/EditorCore.hpp"
 #include "Editor/EditorUI.hpp"
+#include "Core/SceneSerialization.hpp"
 #include "imgui.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -36,13 +37,19 @@ namespace Kiaak
 
         timer = std::make_unique<Timer>();
         Input::Initialize(window->GetNativeWindow());
-        currentScene = std::make_unique<Core::Scene>();
+        // Scene manager & attempt to load saved scenes
+        sceneManager = std::make_unique<Core::SceneManager>();
+        if (!Core::SceneSerialization::LoadAllScenes(sceneManager.get(), "saved_scenes.txt"))
+        {
+            sceneManager->CreateScene("MainScene");
+        }
+        auto *currentScene = sceneManager->GetCurrentScene();
 
-        CreateGameObjectDemo();
+        // CreateGameObjectDemo(); // demo content disabled
         CreateEditorCamera();
 
         editorCore = std::make_unique<Kiaak::EditorCore>();
-        if (!editorCore->Initialize(window.get(), currentScene.get(), renderer.get()))
+        if (!editorCore->Initialize(window.get(), sceneManager.get(), renderer.get()))
         {
             return false;
         }
@@ -99,9 +106,9 @@ namespace Kiaak
         }
 
         // Update the scene (calls Update on all GameObjects)
-        if (currentScene)
+        if (auto *sc = GetCurrentScene())
         {
-            currentScene->Update(deltaTime);
+            sc->Update(deltaTime);
         }
 
         HandleSpriteClickDetection();
@@ -112,9 +119,9 @@ namespace Kiaak
 
     void Engine::FixedUpdate(double fixedDeltaTime)
     {
-        if (currentScene)
+        if (auto *sc = GetCurrentScene())
         {
-            currentScene->FixedUpdate(fixedDeltaTime);
+            sc->FixedUpdate(fixedDeltaTime);
         }
     }
 
@@ -122,9 +129,9 @@ namespace Kiaak
     {
         renderer->BeginFrame(0.2f, 0.2f, 0.2f, 1.0f);
 
-        if (currentScene)
+        if (auto *sc = GetCurrentScene())
         {
-            currentScene->Render();
+            sc->Render();
         }
 
         if (editorMode && editorCore)
@@ -139,32 +146,33 @@ namespace Kiaak
         renderer->EndFrame();
     }
 
-    void Engine::CreateGameObjectDemo()
-    {
-        auto *imageObject2 = CreateGameObject("ImageSprite2");
-        auto *imageRenderer2 = imageObject2->AddComponent<Graphics::SpriteRenderer>("assets/background.png");
-        (void)imageRenderer2;
-
-        imageObject2->GetTransform()->SetPosition(0.0f, 0.0f, -1.0f);
-        imageObject2->GetTransform()->SetScale(10.0f);
-
-        auto *imageObject = CreateGameObject("ImageSprite");
-        auto *imageRenderer = imageObject->AddComponent<Graphics::SpriteRenderer>("assets/spaceship.png");
-        (void)imageRenderer;
-
-        imageObject->GetTransform()->SetPosition(0.0f, -3.0f, 0.0f);
-        imageObject->GetTransform()->SetScale(5.0f);
-
-        auto *camGO = CreateGameObject("MainCamera");
-        auto *cam = camGO->AddComponent<Core::Camera>();
-        camGO->GetTransform()->SetPosition(0.0f, 0.0f, 1.0f);
-        cam->SetOrthographicSize(10.0f);
-        cam->SetZoom(1.0f);
-        cam->SetActive();
-    }
+    // void Engine::CreateGameObjectDemo()
+    // {
+    //     auto *imageObject2 = CreateGameObject("ImageSprite2");
+    //     auto *imageRenderer2 = imageObject2->AddComponent<Graphics::SpriteRenderer>("assets/background.png");
+    //     (void)imageRenderer2;
+    //
+    //     imageObject2->GetTransform()->SetPosition(0.0f, 0.0f, -1.0f);
+    //     imageObject2->GetTransform()->SetScale(10.0f);
+    //
+    //     auto *imageObject = CreateGameObject("ImageSprite");
+    //     auto *imageRenderer = imageObject->AddComponent<Graphics::SpriteRenderer>("assets/spaceship.png");
+    //     (void)imageRenderer;
+    //
+    //     imageObject->GetTransform()->SetPosition(0.0f, -3.0f, 0.0f);
+    //     imageObject->GetTransform()->SetScale(5.0f);
+    //
+    //     auto *camGO = CreateGameObject("MainCamera");
+    //     auto *cam = camGO->AddComponent<Core::Camera>();
+    //     camGO->GetTransform()->SetPosition(0.0f, 0.0f, 1.0f);
+    //     cam->SetOrthographicSize(10.0f);
+    //     cam->SetZoom(1.0f);
+    //     cam->SetActive();
+    // }
 
     Core::GameObject *Engine::CreateGameObject(const std::string &name)
     {
+        auto *currentScene = GetCurrentScene();
         if (!currentScene)
         {
             return nullptr;
@@ -174,6 +182,7 @@ namespace Kiaak
 
     Core::GameObject *Engine::GetGameObject(const std::string &name)
     {
+        auto *currentScene = GetCurrentScene();
         if (!currentScene)
         {
             return nullptr;
@@ -183,6 +192,7 @@ namespace Kiaak
 
     Core::GameObject *Engine::GetGameObject(uint32_t id)
     {
+        auto *currentScene = GetCurrentScene();
         if (!currentScene)
         {
             return nullptr;
@@ -192,6 +202,7 @@ namespace Kiaak
 
     bool Engine::RemoveGameObject(const std::string &name)
     {
+        auto *currentScene = GetCurrentScene();
         if (!currentScene)
         {
             return false;
@@ -201,6 +212,7 @@ namespace Kiaak
 
     bool Engine::RemoveGameObject(uint32_t id)
     {
+        auto *currentScene = GetCurrentScene();
         if (!currentScene)
         {
             return false;
@@ -210,6 +222,7 @@ namespace Kiaak
 
     size_t Engine::GetGameObjectCount() const
     {
+        auto *currentScene = GetCurrentScene();
         return currentScene ? currentScene->GetGameObjectCount() : 0;
     }
 
@@ -217,7 +230,12 @@ namespace Kiaak
     {
         if (isRunning)
         {
-            currentScene.reset();
+            // Save out scenes prototype
+            if (sceneManager)
+            {
+                Core::SceneSerialization::SaveAllScenes(sceneManager.get(), "saved_scenes.txt");
+            }
+            sceneManager.reset();
             renderer.reset();
             window.reset();
             isRunning = false;
@@ -297,6 +315,9 @@ namespace Kiaak
 
     void Engine::CreateEditorCamera()
     {
+        // Create editor camera only if not already present to avoid duplicates
+        if (editorCamera)
+            return;
         auto *editorCamGO = CreateGameObject("EditorCamera");
         editorCamera = editorCamGO->AddComponent<Core::Camera>();
 
@@ -322,18 +343,22 @@ namespace Kiaak
 
     void Engine::SwitchToPlayMode()
     {
+        // Set designated scene camera active if available
+        if (auto *sc = GetCurrentScene())
+        {
+            if (sc->GetDesignatedCamera())
+            {
+                sc->GetDesignatedCamera()->SetActive();
+                return;
+            }
+        }
+        // Fallback to previously stored activeSceneCamera
         if (activeSceneCamera)
         {
             activeSceneCamera->SetActive();
+            return;
         }
-        else
-        {
-            auto *sceneCamera = Core::Camera::GetActive();
-            if (sceneCamera)
-            {
-                sceneCamera->SetActive();
-            }
-        }
+        // Last resort: keep current active
     }
 
     glm::vec2 Engine::ScreenToWorld(double mouseX, double mouseY, Core::Camera *cam) const
@@ -395,6 +420,7 @@ namespace Kiaak
         std::cout << "Mouse: (" << mouseX << ", " << mouseY << ") -> World: (" << worldPos.x << ", " << worldPos.y << ")" << std::endl;
 
         // Check all GameObjects with SpriteRenderer components
+        auto *currentScene = GetCurrentScene();
         if (!currentScene)
             return;
 

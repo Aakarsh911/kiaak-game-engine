@@ -13,10 +13,11 @@ namespace Kiaak
         EditorUI::Shutdown();
     }
 
-    bool EditorCore::Initialize(const Window *win, Core::Scene *sc, Renderer *rend)
+    bool EditorCore::Initialize(const Window *win, Core::SceneManager *manager, Renderer *rend)
     {
         m_window = win;
-        m_scene = sc;
+        m_sceneManager = manager;
+        m_scene = manager ? manager->GetCurrentScene() : nullptr;
         m_renderer = rend;
 
         EditorUI::Initialize();
@@ -26,8 +27,14 @@ namespace Kiaak
 
     void EditorCore::Render()
     {
-        EditorUI::RenderSceneHierarchy(m_scene, m_selectedObject);
-        EditorUI::RenderInspector(m_selectedObject);
+        if (m_sceneManager)
+        {
+            Core::Scene *sceneRef = m_scene;
+            EditorUI::RenderSceneHierarchy(m_sceneManager, sceneRef, m_selectedObject);
+            if (sceneRef != m_scene)
+                m_scene = sceneRef;
+        }
+        EditorUI::RenderInspector(m_sceneManager, m_selectedObject);
         EditorUI::RenderAssetBrowser();
     }
 

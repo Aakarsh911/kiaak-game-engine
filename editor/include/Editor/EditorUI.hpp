@@ -2,6 +2,7 @@
 
 #include "Core/Scene.hpp"
 #include "Core/GameObject.hpp"
+#include "Core/SceneManager.hpp"
 
 struct GLFWwindow;
 
@@ -18,8 +19,8 @@ namespace Kiaak
         static void BeginFrame();
         static void EndFrame();
 
-        static void RenderSceneHierarchy(Core::Scene *scene, Core::GameObject *&selectedObject);
-        static void RenderInspector(Core::GameObject *selectedObject);
+        static void RenderSceneHierarchy(Core::SceneManager *sceneManager, Core::Scene *&activeScene, Core::GameObject *&selectedObject);
+        static void RenderInspector(Core::SceneManager *sceneManager, Core::GameObject *selectedObject);
         static void RenderAssetBrowser();
     };
 

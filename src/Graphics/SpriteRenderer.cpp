@@ -42,6 +42,7 @@ namespace Kiaak
             try
             {
                 m_texture = std::make_shared<Texture>(texturePath);
+                m_texturePath = texturePath;
                 if (m_texture && m_size == glm::vec2(1.0f))
                 {
                     // Convert pixel size to reasonable world units

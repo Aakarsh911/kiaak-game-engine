@@ -4,6 +4,7 @@
 #include "Core/Timer.hpp"
 #include "Core/Input.hpp"
 #include "Core/Scene.hpp"
+#include "Core/SceneManager.hpp"
 #include "Graphics/Renderer.hpp"
 #include "Editor/EditorCore.hpp"
 #include <memory>
@@ -45,7 +46,11 @@ namespace Kiaak
         std::unique_ptr<Timer> timer;
 
         // Scene management
-        std::unique_ptr<Core::Scene> currentScene;
+        // Scene management now handled by SceneManager (multiple scenes)
+        std::unique_ptr<Core::SceneManager> sceneManager;
+
+        // Convenience accessor for current scene (nullptr if none)
+        Core::Scene *GetCurrentScene() const { return sceneManager ? sceneManager->GetCurrentScene() : nullptr; }
 
         // Camera references for editor
         Core::Camera *editorCamera;
@@ -72,7 +77,7 @@ namespace Kiaak
         void Render();
 
         // Demo creation (can be removed later when we have scene loading)
-        void CreateGameObjectDemo();
+        // void CreateGameObjectDemo(); // disabled
 
         // Editor mode
         void ToggleEditorMode();
