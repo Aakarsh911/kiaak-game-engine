@@ -7,11 +7,67 @@
 #include "Core/SceneSerialization.hpp"
 #include <GLFW/glfw3.h>
 #include <functional>
+#include <filesystem>
+#include <vector>
+#include <string>
+#if defined(__APPLE__)
+extern "C" const char *Kiaak_ShowOpenFileDialog();
+#endif
 
 namespace Kiaak
 {
 
     static GLFWwindow *currentWindow = nullptr;
+    static std::vector<std::string> g_assetFiles;
+    static std::filesystem::file_time_type g_lastAssetScanTime{};
+    static double g_lastAssetRefreshCheck = 0.0; // seconds since start
+    static const char *kAssetDir = "assets";
+
+    void EditorUI::RefreshAssetList(bool force)
+    {
+        namespace fs = std::filesystem;
+        if (!force)
+        {
+            // Basic throttle: only rescan if > 1s since last attempt
+            double now = ImGui::GetTime();
+            if (now - g_lastAssetRefreshCheck < 1.0)
+                return;
+            g_lastAssetRefreshCheck = now;
+        }
+        g_assetFiles.clear();
+        try
+        {
+            if (fs::exists(kAssetDir) && fs::is_directory(kAssetDir))
+            {
+                for (auto &entry : fs::recursive_directory_iterator(kAssetDir))
+                {
+                    if (!entry.is_regular_file())
+                        continue;
+                    auto path = entry.path();
+                    // Accept common image extensions
+                    auto ext = path.extension().string();
+                    for (auto &c : ext)
+                        c = (char)tolower(c);
+                    if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".bmp" || ext == ".tga")
+                    {
+                        g_assetFiles.push_back(path.generic_string());
+                    }
+                }
+            }
+        }
+        catch (...)
+        {
+            // swallow exceptions (e.g., permissions)
+        }
+        std::sort(g_assetFiles.begin(), g_assetFiles.end());
+    }
+
+    const std::vector<std::string> &EditorUI::GetAssetFiles()
+    {
+        if (g_assetFiles.empty())
+            RefreshAssetList(true);
+        return g_assetFiles;
+    }
 
     void EditorUI::Initialize()
     {
@@ -91,15 +147,20 @@ namespace Kiaak
                     }
                     if (ImGui::BeginMenu("Create Sprite"))
                     {
-                        static const char *images[] = {"assets/spaceship.png", "assets/background.png"};
-                        for (auto path : images)
+                        RefreshAssetList();
+                        const auto &assets = GetAssetFiles();
+                        if (assets.empty())
                         {
-                            if (ImGui::MenuItem(path))
+                            ImGui::MenuItem("<No image assets found>", nullptr, false, false);
+                        }
+                        for (auto &path : assets)
+                        {
+                            if (ImGui::MenuItem(path.c_str()))
                             {
                                 if (activeScene)
                                 {
                                     auto *go = activeScene->CreateGameObject("Sprite");
-                                    go->AddComponent<Graphics::SpriteRenderer>(path);
+                                    go->AddComponent<Graphics::SpriteRenderer>(path.c_str());
                                     go->GetTransform()->SetPosition(0, 0, 0);
                                     selectedObject = go;
                                     Core::SceneSerialization::SaveAllScenes(sceneManager, "saved_scenes.txt");
@@ -210,7 +271,35 @@ namespace Kiaak
         {
             if (selectedObject)
             {
-                ImGui::Text("GameObject Properties");
+                // Editable name at top
+                static char nameBuffer[256];
+                // Copy current name into buffer each frame if different (avoid losing user edits mid-typing?)
+                // Simple approach: if buffer doesn't match selected object's name and item not active, sync.
+                if (!ImGui::IsAnyItemActive())
+                {
+                    std::string currentName = selectedObject->GetName();
+                    if (strncmp(nameBuffer, currentName.c_str(), sizeof(nameBuffer)) != 0)
+                    {
+                        strncpy(nameBuffer, currentName.c_str(), sizeof(nameBuffer) - 1);
+                        nameBuffer[sizeof(nameBuffer) - 1] = '\0';
+                    }
+                }
+                ImGui::Text("Name");
+                ImGui::SameLine();
+                ImGui::PushItemWidth(-1);
+                if (ImGui::InputText("##GOName", nameBuffer, sizeof(nameBuffer), ImGuiInputTextFlags_EnterReturnsTrue))
+                {
+                    std::string newName = nameBuffer;
+                    if (!newName.empty() && newName != selectedObject->GetName())
+                    {
+                        selectedObject->SetName(newName);
+                        if (sceneManager)
+                        {
+                            Core::SceneSerialization::SaveAllScenes(sceneManager, "saved_scenes.txt");
+                        }
+                    }
+                }
+                ImGui::PopItemWidth();
                 ImGui::Separator();
 
                 auto transform = selectedObject->GetTransform();
@@ -328,7 +417,123 @@ namespace Kiaak
         ImGui::SetNextWindowSize(ImVec2(ImGui::GetIO().DisplaySize.x, 200));
         if (ImGui::Begin("Asset Browser", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize))
         {
-            ImGui::Text("Assets will be shown here");
+            static char importSource[512] = ""; // absolute or relative path to existing file
+            static char importName[256] = "";   // optional target filename
+            static std::string importStatus;
+            bool doRefresh = false;
+
+            // Manual refresh button
+            if (ImGui::Button("Refresh"))
+            {
+                RefreshAssetList(true);
+            }
+            ImGui::SameLine();
+            ImGui::TextDisabled("(auto refresh throttled)");
+
+            ImGui::SameLine();
+            if (ImGui::Button("Import Asset"))
+            {
+                ImGui::OpenPopup("ImportAssetPopup");
+                importStatus.clear();
+            }
+            if (ImGui::BeginPopupModal("ImportAssetPopup", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+            {
+                ImGui::Text("Select a file to copy into assets/.");
+                ImGui::InputText("Source Path", importSource, sizeof(importSource));
+                ImGui::InputText("Target Name (optional)", importName, sizeof(importName));
+                ImGui::SameLine();
+                if (ImGui::Button("Browse"))
+                {
+#if defined(__APPLE__)
+                    if (const char *chosen = Kiaak_ShowOpenFileDialog())
+                    {
+                        strncpy(importSource, chosen, sizeof(importSource) - 1);
+                        importSource[sizeof(importSource) - 1] = '\0';
+                        if (strlen(importName) == 0)
+                        {
+                            // prefill target name with filename
+                            std::filesystem::path p(chosen);
+                            auto fname = p.filename().string();
+                            strncpy(importName, fname.c_str(), sizeof(importName) - 1);
+                            importName[sizeof(importName) - 1] = '\0';
+                        }
+                    }
+#else
+                    importStatus = "Native file dialog not implemented on this platform yet";
+#endif
+                }
+                ImGui::TextDisabled("Supported: .png .jpg .jpeg .bmp .tga");
+                if (!importStatus.empty())
+                {
+                    ImGui::Separator();
+                    ImGui::TextWrapped("%s", importStatus.c_str());
+                }
+                if (ImGui::Button("Import"))
+                {
+                    namespace fs = std::filesystem;
+                    try
+                    {
+                        fs::path src(importSource);
+                        if (!fs::exists(src) || !fs::is_regular_file(src))
+                        {
+                            importStatus = "Source file not found";
+                        }
+                        else
+                        {
+                            auto ext = src.extension().string();
+                            for (auto &c : ext)
+                                c = (char)tolower(c);
+                            if (ext != ".png" && ext != ".jpg" && ext != ".jpeg" && ext != ".bmp" && ext != ".tga")
+                            {
+                                importStatus = "Unsupported extension";
+                            }
+                            else
+                            {
+                                fs::path targetDir(kAssetDir);
+                                if (!fs::exists(targetDir))
+                                    fs::create_directories(targetDir);
+                                fs::path targetName = (strlen(importName) > 0) ? fs::path(importName) : src.filename();
+                                // ensure extension present if user removed
+                                if (targetName.extension().empty())
+                                    targetName += src.extension();
+                                fs::path target = targetDir / targetName;
+                                fs::copy_file(src, target, fs::copy_options::overwrite_existing);
+                                importStatus = std::string("Imported -> ") + target.generic_string();
+                                doRefresh = true;
+                            }
+                        }
+                    }
+                    catch (const std::exception &e)
+                    {
+                        importStatus = std::string("Error: ") + e.what();
+                    }
+                    catch (...)
+                    {
+                        importStatus = "Unknown error";
+                    }
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Close"))
+                {
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::EndPopup();
+            }
+            if (doRefresh)
+                RefreshAssetList(true);
+
+            RefreshAssetList(); // background refresh attempt
+            const auto &assets = GetAssetFiles();
+            ImGui::Separator();
+            ImGui::BeginChild("AssetList");
+            for (auto &a : assets)
+            {
+                if (ImGui::Selectable(a.c_str()))
+                {
+                    // Potential future: preview or drag-drop
+                }
+            }
+            ImGui::EndChild();
         }
         ImGui::End();
     }

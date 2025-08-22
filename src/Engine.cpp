@@ -140,6 +140,33 @@ namespace Kiaak
 
             EditorUI::BeginFrame();
             editorCore->Render();
+            // Sync engine-side selection (used for gizmo) with editor selection (updated via hierarchy clicks)
+            {
+                Core::GameObject *editorSel = editorCore->GetSelectedObject();
+                // If current scene changed, validate selection still belongs; else clear.
+                if (editorSel)
+                {
+                    auto *sc = GetCurrentScene();
+                    bool found = false;
+                    if (sc)
+                    {
+                        for (auto *go : sc->GetAllGameObjects())
+                        {
+                            if (go == editorSel)
+                            {
+                                found = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (!found)
+                        editorSel = nullptr; // scene switched; drop stale selection
+                }
+                if (selectedGameObject != editorSel)
+                {
+                    selectedGameObject = editorSel;
+                }
+            }
             EditorUI::EndFrame();
         }
 

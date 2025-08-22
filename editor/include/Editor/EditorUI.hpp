@@ -22,6 +22,11 @@ namespace Kiaak
         static void RenderSceneHierarchy(Core::SceneManager *sceneManager, Core::Scene *&activeScene, Core::GameObject *&selectedObject);
         static void RenderInspector(Core::SceneManager *sceneManager, Core::GameObject *selectedObject);
         static void RenderAssetBrowser();
+
+    private:
+        // Asset utilities
+        static void RefreshAssetList(bool force = false);
+        static const std::vector<std::string> &GetAssetFiles();
     };
 
 }

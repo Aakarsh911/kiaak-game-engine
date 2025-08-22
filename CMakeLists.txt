@@ -32,7 +32,12 @@ set(IMGUI_SOURCES
 )
 
 # Create the executable
-add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS} ${EDITOR_SOURCES} ${EDITOR_HEADERS} ${GLAD_SOURCES} ${IMGUI_SOURCES})
+set(PLATFORM_SOURCES)
+if(APPLE)
+    list(APPEND PLATFORM_SOURCES external/platform/osx_file_dialog.mm)
+endif()
+
+add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS} ${EDITOR_SOURCES} ${EDITOR_HEADERS} ${GLAD_SOURCES} ${IMGUI_SOURCES} ${PLATFORM_SOURCES})
 
 # Include directories
 target_include_directories(${PROJECT_NAME} PRIVATE include)
@@ -40,6 +45,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE editor/include)
 target_include_directories(${PROJECT_NAME} PRIVATE external/glad/include)
 target_include_directories(${PROJECT_NAME} PRIVATE external/imgui)
 target_include_directories(${PROJECT_NAME} PRIVATE external/imgui/backends)
+target_include_directories(${PROJECT_NAME} PRIVATE external)
 target_include_directories(${PROJECT_NAME} PRIVATE /opt/homebrew/Cellar/glfw/3.4/include)
 target_include_directories(${PROJECT_NAME} PRIVATE /opt/homebrew/Cellar/glm/1.0.1/include)
 
@@ -54,6 +60,10 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     glfw
     OpenGL::GL
 )
+
+if(APPLE)
+    target_link_libraries(${PROJECT_NAME} PRIVATE "-framework Cocoa")
+endif()
 
 # Add compiler warnings
 if(MSVC)

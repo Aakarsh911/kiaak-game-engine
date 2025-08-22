@@ -1,3 +1,18 @@
+SCENE MainScene
+  ACTIVE_CAMERA Camera_1
+  GAMEOBJECT ImageSprite
+    TRANSFORM pos 0 -3 0 rot 0 0 0 scale 5 5 5
+    SPRITE texture assets/spaceship.png
+  GAMEOBJECT Sprite
+    TRANSFORM pos 0 0 0 rot 0 0 0 scale 5 5 1
+    SPRITE texture assets/background.png
+  GAMEOBJECT Menu Camera
+    TRANSFORM pos 19.7 -0.8 0 rot 0 0 0 scale 1 1 1
+    CAMERA orthoSize 10 zoom 1.18
+  GAMEOBJECT Camera_1
+    TRANSFORM pos 0 0 0 rot 0 0 0 scale 1 1 1
+    CAMERA orthoSize 10 zoom 1
+
 SCENE Test
   ACTIVE_CAMERA Camera_1
   GAMEOBJECT ImageSprite2
@@ -9,18 +24,3 @@ SCENE Test
   GAMEOBJECT Camera_1
     TRANSFORM pos 0 0 0 rot 0 0 0 scale 1 1 1
     CAMERA orthoSize 10 zoom 0.35
-
-SCENE MainScene
-  ACTIVE_CAMERA Camera_1
-  GAMEOBJECT ImageSprite
-    TRANSFORM pos 0 -3 0 rot 0 0 0 scale 5 5 5
-    SPRITE texture assets/spaceship.png
-  GAMEOBJECT Sprite
-    TRANSFORM pos 0 0 0 rot 0 0 0 scale 5 5 1
-    SPRITE texture assets/background.png
-  GAMEOBJECT Camera
-    TRANSFORM pos 0 0 0 rot 0 0 0 scale 1 1 1
-    CAMERA orthoSize 10 zoom 1
-  GAMEOBJECT Camera_1
-    TRANSFORM pos 0 0 0 rot 0 0 0 scale 1 1 1
-    CAMERA orthoSize 10 zoom 1
