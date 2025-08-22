@@ -58,6 +58,9 @@ namespace Kiaak
         glm::vec3 editorCameraInitialPosition;
         float editorCameraInitialZoom;
 
+        // Selection system
+        Core::GameObject *selectedGameObject;
+
         // Game loop functions
         void ProcessInput();
         void Update(double deltaTime);
@@ -77,6 +80,7 @@ namespace Kiaak
         // Utility functions
         glm::vec2 ScreenToWorld(double mouseX, double mouseY, Core::Camera *cam) const;
         void HandleSpriteClickDetection();
+        void RenderSelectionGizmo();
     };
 
 } // namespace Kiaak

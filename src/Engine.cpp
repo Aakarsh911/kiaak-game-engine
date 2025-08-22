@@ -3,6 +3,7 @@
 #include "Core/Camera.hpp"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glad/glad.h>
 #include <iostream>
 #include <vector>
 #include <algorithm>
@@ -10,7 +11,7 @@
 namespace Kiaak
 {
 
-    Engine::Engine() : isRunning(false), editorCamera(nullptr), activeSceneCamera(nullptr), editorMode(true), rightMouseDragging(false), editorCameraInitialPosition(0.0f, 0.0f, 5.0f), editorCameraInitialZoom(1.0f) {}
+    Engine::Engine() : isRunning(false), editorCamera(nullptr), activeSceneCamera(nullptr), editorMode(true), rightMouseDragging(false), editorCameraInitialPosition(0.0f, 0.0f, 5.0f), editorCameraInitialZoom(1.0f), selectedGameObject(nullptr) {}
     Engine::~Engine()
     {
         Shutdown();
@@ -113,6 +114,8 @@ namespace Kiaak
         {
             currentScene->Render();
         }
+
+        RenderSelectionGizmo();
 
         renderer->EndFrame();
     }
@@ -420,21 +423,80 @@ namespace Kiaak
                           return a.zValue > b.zValue;
                       });
 
-            // Log only the topmost sprite
             const auto &topSprite = clickedSprites[0];
-            std::cout << "Clicked on sprite: " << topSprite.gameObject->GetName()
-                      << " at world position (" << worldPos.x << ", " << worldPos.y << ")"
-                      << " | Z-value: " << topSprite.zValue
-                      << " | Sprite bounds: [" << topSprite.bounds.x << ", " << topSprite.bounds.y
-                      << "] to [" << topSprite.bounds.z << ", " << topSprite.bounds.w << "]";
-
-            // If multiple sprites were overlapping, mention how many
-            if (clickedSprites.size() > 1)
-            {
-                std::cout << " | (Selected topmost of " << clickedSprites.size() << " overlapping sprites)";
-            }
-            std::cout << std::endl;
+            selectedGameObject = topSprite.gameObject;
+            std::cout << "Selected: " << selectedGameObject->GetName() << std::endl;
         }
+        else
+        {
+            selectedGameObject = nullptr;
+        }
+    }
+
+    void Engine::RenderSelectionGizmo()
+    {
+        if (!editorMode || !selectedGameObject || !renderer)
+            return;
+
+        auto *transform = selectedGameObject->GetTransform();
+        auto *spriteRenderer = selectedGameObject->GetComponent<Graphics::SpriteRenderer>();
+        if (!transform || !spriteRenderer)
+            return; // gizmo only for sprites (for now)
+
+        // --- Compute world-space AABB of the sprite (respects position/scale/rotation) ---
+        const glm::vec2 sz = spriteRenderer->GetSize(); // local quad size in world units
+        const glm::vec2 half = 0.5f * sz;
+        const glm::mat4 M = transform->GetModelMatrix(); // world transform
+        const glm::vec4 w0 = M * glm::vec4(-half.x, -half.y, 0.0f, 1.0f);
+        const glm::vec4 w1 = M * glm::vec4(half.x, -half.y, 0.0f, 1.0f);
+        const glm::vec4 w2 = M * glm::vec4(half.x, half.y, 0.0f, 1.0f);
+        const glm::vec4 w3 = M * glm::vec4(-half.x, half.y, 0.0f, 1.0f);
+
+        float minX = std::min(std::min(w0.x, w1.x), std::min(w2.x, w3.x));
+        float maxX = std::max(std::max(w0.x, w1.x), std::max(w2.x, w3.x));
+        float minY = std::min(std::min(w0.y, w1.y), std::min(w2.y, w3.y));
+        float maxY = std::max(std::max(w0.y, w1.y), std::max(w2.y, w3.y));
+
+        const float width = std::max(0.0f, maxX - minX);
+        const float height = std::max(0.0f, maxY - minY);
+        const glm::vec2 ctr = {(minX + maxX) * 0.5f, (minY + maxY) * 0.5f};
+        const float z = transform->GetPosition().z + 0.02f; // nudge above sprite to avoid z-fighting
+
+        // --- Make line thickness ~2px in world units so it stays constant with zoom ---
+        float thickness = 0.01f; // fallback
+        if (auto *cam = Core::Camera::GetActive(); cam && window)
+        {
+            const float visibleH = 2.0f * cam->GetOrthographicSize() / std::max(cam->GetZoom(), 0.0001f);
+            const float perPixelY = visibleH / static_cast<float>(window->GetHeight());
+            thickness = std::max(perPixelY * 2.0f, perPixelY); // ~2px
+        }
+
+        const glm::vec4 gizmoColor(1.0f, 0.6f, 0.05f, 1.0f); // orange
+
+        // --- Draw 4 thin quads as an outline (does NOT mutate the selected object) ---
+        // Top
+        renderer->DrawQuad(glm::vec3(ctr.x, maxY + thickness * 0.5f, z),
+                           glm::vec2(width + thickness * 2.0f, thickness),
+                           gizmoColor);
+        // Bottom
+        renderer->DrawQuad(glm::vec3(ctr.x, minY - thickness * 0.5f, z),
+                           glm::vec2(width + thickness * 2.0f, thickness),
+                           gizmoColor);
+        // Left
+        renderer->DrawQuad(glm::vec3(minX - thickness * 0.5f, ctr.y, z),
+                           glm::vec2(thickness, height),
+                           gizmoColor);
+        // Right
+        renderer->DrawQuad(glm::vec3(maxX + thickness * 0.5f, ctr.y, z),
+                           glm::vec2(thickness, height),
+                           gizmoColor);
+
+        // --- Optional: small corner handles (comment out if not needed) ---
+        const float handle = thickness * 3.0f;
+        renderer->DrawQuad(glm::vec3(minX, minY, z), glm::vec2(handle, handle), gizmoColor);
+        renderer->DrawQuad(glm::vec3(maxX, minY, z), glm::vec2(handle, handle), gizmoColor);
+        renderer->DrawQuad(glm::vec3(maxX, maxY, z), glm::vec2(handle, handle), gizmoColor);
+        renderer->DrawQuad(glm::vec3(minX, maxY, z), glm::vec2(handle, handle), gizmoColor);
     }
 
 } // namespace Kiaak
