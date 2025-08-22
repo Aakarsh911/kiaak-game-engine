@@ -189,6 +189,72 @@ namespace Kiaak
             {
                 RenderSelectionGizmo();
             }
+            // Editor-only camera preview: draw the view rect for any GameObject that has a Camera component
+            if (editorMode)
+            {
+                if (auto *sc = GetCurrentScene())
+                {
+                    for (auto *go : sc->GetAllGameObjects())
+                    {
+                        if (!go)
+                            continue;
+                        auto *cam = go->GetComponent<Core::Camera>();
+                        if (!cam)
+                            continue;
+
+                        const Core::Transform *t = go->GetTransform();
+                        glm::vec3 camPos = t ? t->GetPosition() : glm::vec3(0.0f);
+
+                        float halfH = cam->GetOrthographicSize() / std::max(cam->GetZoom(), 0.0001f);
+                        float aspect = 1.0f;
+                        if (window)
+                        {
+                            float w = static_cast<float>(window->GetFramebufferWidth());
+                            float h = static_cast<float>(window->GetFramebufferHeight());
+                            if (h > 0.0f)
+                                aspect = w / h;
+                        }
+                        float halfW = halfH * aspect;
+
+                        glm::vec4 camColor(1.0f, 1.0f, 1.0f, 0.9f);
+                        float z = camPos.z + 0.05f;
+
+                        // Skip the special editor camera GameObject (created for editor controls)
+                        if (go->GetName() == "EditorCamera")
+                            continue;
+
+                        // Compute a stable border thickness in world units based on camera viewport so it appears ~2px
+                        float border = 0.01f;
+                        if (auto *vcam = cam)
+                        {
+                            // Attempt to get per-pixel world size using this camera's orthographic size and the window height
+                            if (window)
+                            {
+                                float visibleH = 2.0f * vcam->GetOrthographicSize() / std::max(vcam->GetZoom(), 0.0001f);
+                                float perPixelY = visibleH / static_cast<float>(window->GetHeight());
+                                border = std::max(perPixelY * 2.0f, perPixelY * 0.5f);
+                            }
+                        }
+
+                        glm::vec2 ctr(camPos.x, camPos.y);
+                        float width = halfW * 2.0f;
+                        float height = halfH * 2.0f;
+
+                        // Only draw if the camera view has positive area
+                        const float eps = 1e-5f;
+                        if (width > eps && height > eps)
+                        {
+                            renderer->DrawQuad(glm::vec3(ctr.x, camPos.y + halfH + border * 0.5f, z), glm::vec2(width + border * 2.0f, border), camColor);
+                            renderer->DrawQuad(glm::vec3(ctr.x, camPos.y - halfH - border * 0.5f, z), glm::vec2(width + border * 2.0f, border), camColor);
+                            renderer->DrawQuad(glm::vec3(camPos.x - halfW - border * 0.5f, ctr.y, z), glm::vec2(border, height), camColor);
+                            renderer->DrawQuad(glm::vec3(camPos.x + halfW + border * 0.5f, ctr.y, z), glm::vec2(border, height), camColor);
+
+                            float iconSize = std::max(0.05f, std::min(halfW, halfH) * 0.12f);
+                            renderer->DrawQuad(glm::vec3(camPos.x, camPos.y, z + 0.02f), glm::vec2(iconSize, iconSize), camColor);
+                        }
+                    }
+                }
+            }
             editorCore->Render(); // internally hides editor-only panels in play mode
             if (editorMode)
             {
@@ -524,16 +590,16 @@ namespace Kiaak
         if (!currentScene)
             return;
 
-        // Collect all clicked sprites with their Z values
-        struct ClickedSprite
+        // Collect all clicked items (sprites and cameras) with their Z values
+        struct ClickedItem
         {
             Core::GameObject *gameObject;
-            Graphics::SpriteRenderer *spriteRenderer;
+            Graphics::SpriteRenderer *spriteRenderer; // nullptr for cameras
             float zValue;
             glm::vec4 bounds; // minX, minY, maxX, maxY
         };
 
-        std::vector<ClickedSprite> clickedSprites;
+        std::vector<ClickedItem> clickedSprites;
 
         auto allGameObjects = currentScene->GetAllGameObjects();
         for (auto *gameObject : allGameObjects)
@@ -541,38 +607,61 @@ namespace Kiaak
             if (!gameObject)
                 continue;
 
-            // Check if this GameObject has a SpriteRenderer component
+            // First, check sprite renderer
             auto *spriteRenderer = gameObject->GetComponent<Graphics::SpriteRenderer>();
-            if (!spriteRenderer || !spriteRenderer->IsVisible())
-                continue;
-
-            // Get the sprite's transform
-            auto *transform = gameObject->GetTransform();
-            if (!transform)
-                continue;
-
-            glm::vec3 spritePos = transform->GetPosition();
-            glm::vec3 spriteScale = transform->GetScale();
-            glm::vec2 spriteSize = spriteRenderer->GetSize();
-
-            // Calculate the sprite's world bounds (assuming center-anchored sprite)
-            float halfWidth = (spriteSize.x * spriteScale.x) * 0.5f;
-            float halfHeight = (spriteSize.y * spriteScale.y) * 0.5f;
-
-            float minX = spritePos.x - halfWidth;
-            float maxX = spritePos.x + halfWidth;
-            float minY = spritePos.y - halfHeight;
-            float maxY = spritePos.y + halfHeight;
-
-            // Check if the world mouse position is within the sprite bounds
-            if (worldPos.x >= minX && worldPos.x <= maxX &&
-                worldPos.y >= minY && worldPos.y <= maxY)
+            if (spriteRenderer && spriteRenderer->IsVisible())
             {
-                // Add to clicked sprites list
-                clickedSprites.push_back({gameObject,
-                                          spriteRenderer,
-                                          spritePos.z, // Z-value for depth sorting
-                                          glm::vec4(minX, minY, maxX, maxY)});
+                auto *transform = gameObject->GetTransform();
+                if (!transform)
+                    continue;
+                glm::vec3 spritePos = transform->GetPosition();
+                glm::vec3 spriteScale = transform->GetScale();
+                glm::vec2 spriteSize = spriteRenderer->GetSize();
+
+                float halfWidth = (spriteSize.x * spriteScale.x) * 0.5f;
+                float halfHeight = (spriteSize.y * spriteScale.y) * 0.5f;
+
+                float minX = spritePos.x - halfWidth;
+                float maxX = spritePos.x + halfWidth;
+                float minY = spritePos.y - halfHeight;
+                float maxY = spritePos.y + halfHeight;
+
+                if (worldPos.x >= minX && worldPos.x <= maxX && worldPos.y >= minY && worldPos.y <= maxY)
+                {
+                    clickedSprites.push_back({gameObject, spriteRenderer, spritePos.z, glm::vec4(minX, minY, maxX, maxY)});
+                    continue; // found sprite hit, prefer it over camera on same object
+                }
+            }
+
+            // Next consider camera components (skip editor camera)
+            if (gameObject->GetName() == "EditorCamera")
+                continue;
+            auto *camComp = gameObject->GetComponent<Core::Camera>();
+            if (camComp)
+            {
+                auto *t = gameObject->GetTransform();
+                if (!t)
+                    continue;
+                glm::vec3 camPos = t->GetPosition();
+                float halfH = camComp->GetOrthographicSize() / std::max(camComp->GetZoom(), 0.0001f);
+                float aspect = 1.0f;
+                if (window)
+                {
+                    float w = static_cast<float>(window->GetFramebufferWidth());
+                    float h = static_cast<float>(window->GetFramebufferHeight());
+                    if (h > 0.0f)
+                        aspect = w / h;
+                }
+                float halfW = halfH * aspect;
+                float minX = camPos.x - halfW;
+                float maxX = camPos.x + halfW;
+                float minY = camPos.y - halfH;
+                float maxY = camPos.y + halfH;
+
+                if (worldPos.x >= minX && worldPos.x <= maxX && worldPos.y >= minY && worldPos.y <= maxY)
+                {
+                    clickedSprites.push_back({gameObject, nullptr, camPos.z, glm::vec4(minX, minY, maxX, maxY)});
+                }
             }
         }
 
@@ -581,7 +670,7 @@ namespace Kiaak
         {
             // Sort by Z-value in descending order (highest Z first = topmost)
             std::sort(clickedSprites.begin(), clickedSprites.end(),
-                      [](const ClickedSprite &a, const ClickedSprite &b)
+                      [](const ClickedItem &a, const ClickedItem &b)
                       {
                           return a.zValue > b.zValue;
                       });
@@ -610,23 +699,52 @@ namespace Kiaak
             return;
 
         auto *transform = selectedGameObject->GetTransform();
+        if (!transform)
+            return;
+
+        // Two supported selection shapes: SpriteRenderer AABB or Camera view rect
         auto *spriteRenderer = selectedGameObject->GetComponent<Graphics::SpriteRenderer>();
-        if (!transform || !spriteRenderer)
-            return; // gizmo only for sprites (for now)
+        float minX, maxX, minY, maxY;
+        if (spriteRenderer)
+        {
+            // Compute world-space AABB from sprite size and transform
+            const glm::vec2 sz = spriteRenderer->GetSize(); // local quad size in world units
+            const glm::vec2 half = 0.5f * sz;
+            const glm::mat4 M = transform->GetModelMatrix(); // world transform
+            const glm::vec4 w0 = M * glm::vec4(-half.x, -half.y, 0.0f, 1.0f);
+            const glm::vec4 w1 = M * glm::vec4(half.x, -half.y, 0.0f, 1.0f);
+            const glm::vec4 w2 = M * glm::vec4(half.x, half.y, 0.0f, 1.0f);
+            const glm::vec4 w3 = M * glm::vec4(-half.x, half.y, 0.0f, 1.0f);
 
-        // Compute world-space AABB
-        const glm::vec2 sz = spriteRenderer->GetSize(); // local quad size in world units
-        const glm::vec2 half = 0.5f * sz;
-        const glm::mat4 M = transform->GetModelMatrix(); // world transform
-        const glm::vec4 w0 = M * glm::vec4(-half.x, -half.y, 0.0f, 1.0f);
-        const glm::vec4 w1 = M * glm::vec4(half.x, -half.y, 0.0f, 1.0f);
-        const glm::vec4 w2 = M * glm::vec4(half.x, half.y, 0.0f, 1.0f);
-        const glm::vec4 w3 = M * glm::vec4(-half.x, half.y, 0.0f, 1.0f);
+            minX = std::min(std::min(w0.x, w1.x), std::min(w2.x, w3.x));
+            maxX = std::max(std::max(w0.x, w1.x), std::max(w2.x, w3.x));
+            minY = std::min(std::min(w0.y, w1.y), std::min(w2.y, w3.y));
+            maxY = std::max(std::max(w0.y, w1.y), std::max(w2.y, w3.y));
+        }
+        else
+        {
+            // If selected object is a camera, compute its view rectangle
+            auto *camComp = selectedGameObject->GetComponent<Core::Camera>();
+            if (!camComp)
+                return; // nothing selectable for gizmo
 
-        float minX = std::min(std::min(w0.x, w1.x), std::min(w2.x, w3.x));
-        float maxX = std::max(std::max(w0.x, w1.x), std::max(w2.x, w3.x));
-        float minY = std::min(std::min(w0.y, w1.y), std::min(w2.y, w3.y));
-        float maxY = std::max(std::max(w0.y, w1.y), std::max(w2.y, w3.y));
+            glm::vec3 pos = transform->GetPosition();
+            float halfH = camComp->GetOrthographicSize() / std::max(camComp->GetZoom(), 0.0001f);
+            float aspect = 1.0f;
+            if (window)
+            {
+                float w = static_cast<float>(window->GetFramebufferWidth());
+                float h = static_cast<float>(window->GetFramebufferHeight());
+                if (h > 0.0f)
+                    aspect = w / h;
+            }
+            float halfW = halfH * aspect;
+
+            minX = pos.x - halfW;
+            maxX = pos.x + halfW;
+            minY = pos.y - halfH;
+            maxY = pos.y + halfH;
+        }
 
         const float width = std::max(0.0f, maxX - minX);
         const float height = std::max(0.0f, maxY - minY);
