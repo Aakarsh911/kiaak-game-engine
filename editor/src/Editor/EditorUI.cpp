@@ -1249,8 +1249,22 @@ namespace Kiaak
 #endif
             }
 
+            // Texture filter mode combo (simple vertical separator via text spacing)
+            ImGui::SameLine();
+            ImGui::TextDisabled("|");
+            ImGui::SameLine();
+            ImGui::Text("Filter:");
+            ImGui::SameLine();
+            int currentFilter = (int)Texture::GetGlobalFilterMode();
+            const char *filterLabels[] = {"Linear", "Nearest"};
+            ImGui::SetNextItemWidth(90.0f);
+            if (ImGui::Combo("##TexFilter", &currentFilter, filterLabels, IM_ARRAYSIZE(filterLabels)))
+            {
+                Texture::SetGlobalFilterMode(static_cast<Texture::FilterMode>(currentFilter));
+            }
+
             float windowW = ImGui::GetWindowSize().x;
-            // Position button nearer the top (2px padding)
+            // Center play/pause button
             ImGui::SetCursorPos(ImVec2(windowW * 0.5f - 40.0f, 4.0f));
             if (auto *eng = Engine::Get())
             {

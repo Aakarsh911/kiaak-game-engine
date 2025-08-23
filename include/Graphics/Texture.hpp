@@ -2,27 +2,39 @@
 
 #include <glad/glad.h>
 #include <string>
+#include <unordered_set>
 
 /**
  * Texture class manages OpenGL textures for 2D rendering
- * 
+ *
  * This class handles:
  * - Loading images from files using stb_image
  * - Creating OpenGL texture objects
  * - Managing texture parameters (filtering, wrapping)
  * - Binding textures for rendering
- * 
+ *
  * Supported formats: PNG, JPG, BMP, TGA
  */
-class Texture {
+class Texture
+{
 private:
-    GLuint m_textureID;      // OpenGL texture object ID
-    int m_width;             // Texture width in pixels
-    int m_height;            // Texture height in pixels
-    int m_channels;          // Number of color channels (3=RGB, 4=RGBA)
-    std::string m_filePath;  // Path to source image file
+    GLuint m_textureID;     // OpenGL texture object ID
+    int m_width;            // Texture width in pixels
+    int m_height;           // Texture height in pixels
+    int m_channels;         // Number of color channels (3=RGB, 4=RGBA)
+    std::string m_filePath; // Path to source image file
+
+    // Apply current global filter mode to this texture (if valid)
+    void ApplyFilterParameters() const;
 
 public:
+    // Texture filtering mode
+    enum class FilterMode
+    {
+        Linear = 0,
+        Nearest = 1
+    };
+
     /**
      * Default constructor - creates an empty texture
      */
@@ -32,7 +44,7 @@ public:
      * Constructor that loads texture from file
      * @param filePath Path to image file to load
      */
-    Texture(const std::string& filePath);
+    Texture(const std::string &filePath);
 
     /**
      * Destructor - cleans up OpenGL texture
@@ -44,7 +56,7 @@ public:
      * @param filePath Path to image file
      * @return true if loading succeeded, false otherwise
      */
-    bool LoadFromFile(const std::string& filePath);
+    bool LoadFromFile(const std::string &filePath);
 
     /**
      * Create texture from raw pixel data
@@ -54,7 +66,7 @@ public:
      * @param channels Number of color channels (3 or 4)
      * @return true if creation succeeded, false otherwise
      */
-    bool CreateFromData(unsigned char* data, int width, int height, int channels);
+    bool CreateFromData(unsigned char *data, int width, int height, int channels);
 
     /**
      * Bind this texture for rendering
@@ -102,7 +114,12 @@ public:
      * Get file path of loaded texture
      * @return Path to source image file
      */
-    const std::string& GetFilePath() const { return m_filePath; }
+    const std::string &GetFilePath() const { return m_filePath; }
+
+    // -------- Global filtering control --------
+    // Set the global filter mode (applies to all existing textures immediately)
+    static void SetGlobalFilterMode(FilterMode mode);
+    static FilterMode GetGlobalFilterMode();
 
 private:
     /**
@@ -114,4 +131,8 @@ private:
      * Clean up OpenGL resources
      */
     void Cleanup();
+
+    // Registry of all live Texture instances to support global filter changes
+    static std::unordered_set<Texture *> s_allTextures;
+    static FilterMode s_currentFilterMode;
 };
