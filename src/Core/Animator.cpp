@@ -2,6 +2,7 @@
 #include "Editor/EditorUI.hpp"
 #include "Graphics/SpriteRenderer.hpp"
 #include "Core/GameObject.hpp"
+#include <cmath>
 #include <algorithm>
 
 using namespace Kiaak;
@@ -48,6 +49,27 @@ void Animator::Update(double deltaTime)
         {
             sr->SetTexture(clip.texturePath);
         }
+        // Adjust sprite size to frame size if it still matches the full sheet size
+        if (sr->GetTexture())
+        {
+            int texW = sr->GetTexture()->GetWidth();
+            int texH = sr->GetTexture()->GetHeight();
+            if (cols > 0 && clip.vFrames > 0)
+            {
+                float ppu = 100.0f; // pixels per unit (mirrors SpriteRenderer logic)
+                float fullW = (float)texW / ppu;
+                float fullH = (float)texH / ppu;
+                const glm::vec2 currentSize = sr->GetSize();
+                auto approximately = [](float a, float b)
+                { return std::fabs(a - b) < 0.0001f; };
+                if (approximately(currentSize.x, fullW) && approximately(currentSize.y, fullH))
+                {
+                    float frameW = fullW / (float)cols;
+                    float frameH = fullH / (float)clip.vFrames;
+                    sr->SetSize(frameW, frameH);
+                }
+            }
+        }
     }
 }
 
@@ -78,6 +100,27 @@ void Animator::ApplyAutoPlay()
             sr->SetUVRect(glm::vec4(u0, v0, u1, v1));
             if (!clip.texturePath.empty() && (!sr->GetTexture() || sr->GetTexturePath() != clip.texturePath))
                 sr->SetTexture(clip.texturePath);
+            // Initial adjust of size if currently full sheet
+            if (sr->GetTexture())
+            {
+                int texW = sr->GetTexture()->GetWidth();
+                int texH = sr->GetTexture()->GetHeight();
+                if (cols > 0 && clip.vFrames > 0)
+                {
+                    float ppu = 100.0f;
+                    float fullW = (float)texW / ppu;
+                    float fullH = (float)texH / ppu;
+                    const glm::vec2 currentSize = sr->GetSize();
+                    auto approximately = [](float a, float b)
+                    { return std::fabs(a - b) < 0.0001f; };
+                    if (approximately(currentSize.x, fullW) && approximately(currentSize.y, fullH))
+                    {
+                        float frameW = fullW / (float)cols;
+                        float frameH = fullH / (float)clip.vFrames;
+                        sr->SetSize(frameW, frameH);
+                    }
+                }
+            }
         }
     }
 }
