@@ -13,7 +13,7 @@ namespace Kiaak
 {
     namespace Core
     {
-    class Scene; // fwd
+        class Scene; // fwd
 
         /**
          * GameObject is the fundamental object in the scene
@@ -44,8 +44,8 @@ namespace Kiaak
             const Transform *GetTransform() const { return m_transform; }
 
             // Owning Scene
-            Scene* GetScene() const { return m_scene; }
-            void SetScene(Scene* sc) { m_scene = sc; }
+            Scene *GetScene() const { return m_scene; }
+            void SetScene(Scene *sc) { m_scene = sc; }
 
             // Component management
             template <typename T, typename... Args>
@@ -96,7 +96,7 @@ namespace Kiaak
             Transform *m_transform = nullptr;
 
             // Back-pointer to owning scene (non-owning)
-            Scene* m_scene = nullptr;
+            Scene *m_scene = nullptr;
 
             // Component storage
             std::vector<std::unique_ptr<Component>> m_components;
@@ -144,6 +144,12 @@ namespace Kiaak
             {
                 return static_cast<T *>(it->second);
             }
+            // Fallback: allow querying by base class (e.g., Collider2D when only BoxCollider2D stored)
+            for (auto &component : m_components)
+            {
+                if (auto *casted = dynamic_cast<T *>(component.get()))
+                    return casted;
+            }
             return nullptr;
         }
 
@@ -154,6 +160,11 @@ namespace Kiaak
             if (it != m_componentMap.end())
             {
                 return static_cast<const T *>(it->second);
+            }
+            for (auto &component : m_components)
+            {
+                if (auto *casted = dynamic_cast<const T *>(component.get()))
+                    return casted;
             }
             return nullptr;
         }

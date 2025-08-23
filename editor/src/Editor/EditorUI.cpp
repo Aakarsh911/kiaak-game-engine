@@ -16,7 +16,6 @@
 #include "Core/Animator.hpp"
 #include "Core/Rigidbody2D.hpp"
 #include "Core/Collider2D.hpp"
-#include "Core/CollisionLogger.hpp"
 #include <functional>
 #include <filesystem>
 #include <vector>
@@ -752,11 +751,24 @@ namespace Kiaak
                                 if (ImGui::MenuItem("Add Box Collider 2D", nullptr, false, hasSprite && !hasBox))
                                 {
                                     node->AddComponent<Core::BoxCollider2D>();
-                                }
-                                bool hasLogger = node->GetComponent<Core::CollisionLogger>() != nullptr;
-                                if (ImGui::MenuItem("Add Collision Logger", nullptr, false, !hasLogger))
-                                {
-                                    node->AddComponent<Core::CollisionLogger>();
+                                    if (sceneManager && Core::Project::HasPath())
+                                    {
+                                        for (auto &nm : sceneManager->GetSceneNames())
+                                        {
+                                            auto *sc = sceneManager->GetScene(nm);
+                                            if (!sc)
+                                                continue;
+                                            for (auto *go : sc->GetAllGameObjects())
+                                            {
+                                                if (go == node)
+                                                {
+                                                    Core::SceneSerialization::SaveSceneToFile(sc, Core::Project::GetScenesPath() + "/" + nm + ".scene");
+                                                    goto add_box_saved;
+                                                }
+                                            }
+                                        }
+                                    }
+                                add_box_saved:;
                                 }
                                 if (ImGui::MenuItem("Delete"))
                                 {
@@ -1107,16 +1119,64 @@ namespace Kiaak
                     ImGui::Text("Box Collider 2D");
                     bool enabled = bc->IsEnabled();
                     if (ImGui::Checkbox("Enabled##BoxCol", &enabled))
+                    {
                         bc->SetEnabled(enabled);
+                        if (Core::Project::HasPath())
+                        {
+                            auto *owningScene = selectedObject->GetScene();
+                            if (owningScene)
+                            {
+                                auto nm = sceneManager->GetSceneName(owningScene);
+                                if (!nm.empty())
+                                    Core::SceneSerialization::SaveSceneToFile(owningScene, Core::Project::GetScenesPath() + "/" + nm + ".scene");
+                            }
+                        }
+                    }
                     bool trig = bc->IsTrigger();
                     if (ImGui::Checkbox("Is Trigger", &trig))
+                    {
                         bc->SetTrigger(trig);
+                        if (Core::Project::HasPath())
+                        {
+                            auto *owningScene = selectedObject->GetScene();
+                            if (owningScene)
+                            {
+                                auto nm = sceneManager->GetSceneName(owningScene);
+                                if (!nm.empty())
+                                    Core::SceneSerialization::SaveSceneToFile(owningScene, Core::Project::GetScenesPath() + "/" + nm + ".scene");
+                            }
+                        }
+                    }
                     glm::vec2 size = bc->GetSize();
                     if (ImGui::DragFloat2("Size", &size.x, 0.01f, 0.0001f, 10000.f))
+                    {
                         bc->SetSize(size);
+                        if (Core::Project::HasPath())
+                        {
+                            auto *owningScene = selectedObject->GetScene();
+                            if (owningScene)
+                            {
+                                auto nm = sceneManager->GetSceneName(owningScene);
+                                if (!nm.empty())
+                                    Core::SceneSerialization::SaveSceneToFile(owningScene, Core::Project::GetScenesPath() + "/" + nm + ".scene");
+                            }
+                        }
+                    }
                     glm::vec2 off = bc->GetOffset();
                     if (ImGui::DragFloat2("Offset", &off.x, 0.01f, -10000.f, 10000.f))
+                    {
                         bc->SetOffset(off);
+                        if (Core::Project::HasPath())
+                        {
+                            auto *owningScene = selectedObject->GetScene();
+                            if (owningScene)
+                            {
+                                auto nm = sceneManager->GetSceneName(owningScene);
+                                if (!nm.empty())
+                                    Core::SceneSerialization::SaveSceneToFile(owningScene, Core::Project::GetScenesPath() + "/" + nm + ".scene");
+                            }
+                        }
+                    }
                     ImGui::TextDisabled("Auto-sized from sprite if zero at Start");
                 }
             }

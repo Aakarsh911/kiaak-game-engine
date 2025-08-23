@@ -159,37 +159,14 @@ namespace Kiaak
                             {
                                 A->_DispatchTriggerEnter(B);
                                 B->_DispatchTriggerEnter(A);
-                                // NEW: stop dynamic body on trigger enter
-                                auto stopIfDynamic = [](Rigidbody2D *rb, Collider2D *self, Collider2D *other)
-                                {
-                                    if (!rb)
-                                        return;
-                                    if (rb->GetBodyType() != Rigidbody2D::BodyType::Dynamic)
-                                        return;
-                                    rb->SetVelocity(glm::vec2(0.0f));
-                                    std::string selfName = self && self->GetGameObject() ? self->GetGameObject()->GetName() : "<A>";
-                                    std::string otherName = other && other->GetGameObject() ? other->GetGameObject()->GetName() : "<B>";
-                                    std::cout << "[Trigger Stop] Set velocity of '" << selfName << "' to 0 due to trigger enter with '" << otherName << "'\n";
-                                };
-                                // Decide which dynamic(s) to stop. If both dynamic, stop both.
-                                bool dynA = rbA && rbA->GetBodyType() == Rigidbody2D::BodyType::Dynamic;
-                                bool dynB = rbB && rbB->GetBodyType() == Rigidbody2D::BodyType::Dynamic;
-                                if (dynA)
-                                    stopIfDynamic(rbA, A, B);
-                                if (dynB)
-                                    stopIfDynamic(rbB, B, A);
-                                // Mark grounded if vertical overlap suggests B is below A or vice versa
-                                if (dynA && rbA && aMin.y >= bMin.y && aMin.y > bMin.y)
-                                    rbA->SetGrounded(true);
-                                if (dynB && rbB && bMin.y >= aMin.y && bMin.y > aMin.y)
-                                    rbB->SetGrounded(true);
                             }
                             else
                             {
                                 A->_DispatchTriggerStay(B);
                                 B->_DispatchTriggerStay(A);
                             }
-                            continue; // no resolution
+                            // Triggers purposely have no resolution or velocity modification here.
+                            continue;
                         }
                         // Solid collision events & resolution (only one dynamic for now)
                         bool was = m_prevFramePairs.find(key) != m_prevFramePairs.end();

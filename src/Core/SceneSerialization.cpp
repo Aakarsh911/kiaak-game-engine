@@ -5,6 +5,7 @@
 #include "Core/Camera.hpp"
 #include "Core/Animator.hpp"
 #include "Core/Rigidbody2D.hpp"
+#include "Core/Collider2D.hpp"
 #include "Editor/EditorUI.hpp"
 #include <fstream>
 #include <sstream>
@@ -43,9 +44,16 @@ namespace Kiaak::Core
             const char *typeStr = "Dynamic";
             switch (rb->GetBodyType())
             {
-            case Rigidbody2D::BodyType::Static: typeStr = "Static"; break;
-            case Rigidbody2D::BodyType::Kinematic: typeStr = "Kinematic"; break;
-            case Rigidbody2D::BodyType::Dynamic: default: typeStr = "Dynamic"; break;
+            case Rigidbody2D::BodyType::Static:
+                typeStr = "Static";
+                break;
+            case Rigidbody2D::BodyType::Kinematic:
+                typeStr = "Kinematic";
+                break;
+            case Rigidbody2D::BodyType::Dynamic:
+            default:
+                typeStr = "Dynamic";
+                break;
             }
             out << "    RIGIDBODY2D "
                 << "type " << typeStr
@@ -54,6 +62,19 @@ namespace Kiaak::Core
                 << " gravityScale " << rb->GetGravityScale()
                 << " useGravity " << (rb->GetUseGravity() ? 1 : 0)
                 << "\n";
+        }
+        if (auto *colBase = go->GetComponent<Collider2D>())
+        {
+            // Currently only BoxCollider2D is implemented.
+            if (auto *box = dynamic_cast<BoxCollider2D *>(colBase))
+            {
+                auto size = box->GetSize();
+                auto offset = box->GetOffset();
+                out << "    COLLIDER2D type Box size " << size.x << ' ' << size.y
+                    << " offset " << offset.x << ' ' << offset.y
+                    << " trigger " << (box->IsTrigger() ? 1 : 0)
+                    << "\n";
+            }
         }
     }
 
@@ -268,17 +289,55 @@ namespace Kiaak::Core
                         iss >> useGravity;
                 }
                 auto *rb = go->GetComponent<Rigidbody2D>();
-                if (!rb) rb = go->AddComponent<Rigidbody2D>();
+                if (!rb)
+                    rb = go->AddComponent<Rigidbody2D>();
                 if (rb)
                 {
                     Rigidbody2D::BodyType bt = Rigidbody2D::BodyType::Dynamic;
-                    if (typeStr == "Static") bt = Rigidbody2D::BodyType::Static;
-                    else if (typeStr == "Kinematic") bt = Rigidbody2D::BodyType::Kinematic;
+                    if (typeStr == "Static")
+                        bt = Rigidbody2D::BodyType::Static;
+                    else if (typeStr == "Kinematic")
+                        bt = Rigidbody2D::BodyType::Kinematic;
                     rb->SetBodyType(bt);
                     rb->SetMass(mass);
                     rb->SetLinearDamping(damping);
                     rb->SetGravityScale(gravityScale);
                     rb->SetUseGravity(useGravity != 0);
+                }
+            }
+            else if (token == "COLLIDER2D" && currentScene)
+            {
+                auto objs = currentScene->GetAllGameObjects();
+                if (objs.empty())
+                    continue;
+                auto *go = objs.back();
+                std::string lbl;
+                std::string typeStr = "Box";
+                glm::vec2 size{1.0f};
+                glm::vec2 offset{0.0f};
+                int trigger = 0;
+                while (iss >> lbl)
+                {
+                    if (lbl == "type")
+                        iss >> typeStr;
+                    else if (lbl == "size")
+                        iss >> size.x >> size.y;
+                    else if (lbl == "offset")
+                        iss >> offset.x >> offset.y;
+                    else if (lbl == "trigger")
+                        iss >> trigger;
+                }
+                if (typeStr == "Box")
+                {
+                    auto *box = go->GetComponent<BoxCollider2D>();
+                    if (!box)
+                        box = go->AddComponent<BoxCollider2D>();
+                    if (box)
+                    {
+                        box->SetSize(size);
+                        box->SetOffset(offset);
+                        box->SetTrigger(trigger != 0);
+                    }
                 }
             }
         }
@@ -501,17 +560,55 @@ namespace Kiaak::Core
                         iss >> useGravity;
                 }
                 auto *rb = go->GetComponent<Rigidbody2D>();
-                if (!rb) rb = go->AddComponent<Rigidbody2D>();
+                if (!rb)
+                    rb = go->AddComponent<Rigidbody2D>();
                 if (rb)
                 {
                     Rigidbody2D::BodyType bt = Rigidbody2D::BodyType::Dynamic;
-                    if (typeStr == "Static") bt = Rigidbody2D::BodyType::Static;
-                    else if (typeStr == "Kinematic") bt = Rigidbody2D::BodyType::Kinematic;
+                    if (typeStr == "Static")
+                        bt = Rigidbody2D::BodyType::Static;
+                    else if (typeStr == "Kinematic")
+                        bt = Rigidbody2D::BodyType::Kinematic;
                     rb->SetBodyType(bt);
                     rb->SetMass(mass);
                     rb->SetLinearDamping(damping);
                     rb->SetGravityScale(gravityScale);
                     rb->SetUseGravity(useGravity != 0);
+                }
+            }
+            else if (token == "COLLIDER2D" && currentScene)
+            {
+                auto objs = currentScene->GetAllGameObjects();
+                if (objs.empty())
+                    continue;
+                auto *go = objs.back();
+                std::string lbl;
+                std::string typeStr = "Box";
+                glm::vec2 size{1.0f};
+                glm::vec2 offset{0.0f};
+                int trigger = 0;
+                while (iss >> lbl)
+                {
+                    if (lbl == "type")
+                        iss >> typeStr;
+                    else if (lbl == "size")
+                        iss >> size.x >> size.y;
+                    else if (lbl == "offset")
+                        iss >> offset.x >> offset.y;
+                    else if (lbl == "trigger")
+                        iss >> trigger;
+                }
+                if (typeStr == "Box")
+                {
+                    auto *box = go->GetComponent<BoxCollider2D>();
+                    if (!box)
+                        box = go->AddComponent<BoxCollider2D>();
+                    if (box)
+                    {
+                        box->SetSize(size);
+                        box->SetOffset(offset);
+                        box->SetTrigger(trigger != 0);
+                    }
                 }
             }
         }
