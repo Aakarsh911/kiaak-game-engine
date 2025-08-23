@@ -1,6 +1,7 @@
 #pragma once
 
 #include "GameObject.hpp"
+#include "Physics2D.hpp"
 #include <utility>
 #include <memory>
 #include <unordered_map>
@@ -37,7 +38,7 @@ namespace Kiaak
             // Scene lifecycle
             void Start();
             void Update(double deltaTime);
-            void FixedUpdate(double fixedDeltaTime);
+            void FixedUpdate(double fixedDeltaTime, bool runPhysics = true);
             // Render scene contents. When includeDisabledForEditor is true (editor mode),
             // components that are disabled are still drawn for authoring visibility.
             void Render(bool includeDisabledForEditor = false);
@@ -47,6 +48,9 @@ namespace Kiaak
             Camera *GetDesignatedCamera() const { return m_designatedCamera; }
             // Helper to clear if a GO removed
             void OnGameObjectRemoved(GameObject *go);
+
+            // Physics access (for components)
+            Physics2D* GetPhysics2D() { return &m_physics2D; }
 
         private:
             // GameObject storage
@@ -59,6 +63,9 @@ namespace Kiaak
 
             // Non-owned pointer to designated scene camera component
             Camera *m_designatedCamera{nullptr};
+
+            // Physics world (2D)
+            Physics2D m_physics2D;
 
             // Helper methods
             std::string GenerateUniqueGameObjectName(const std::string &baseName) const;

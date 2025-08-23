@@ -4,6 +4,7 @@
 #include "Graphics/SpriteRenderer.hpp"
 #include "Core/Camera.hpp"
 #include "Core/Animator.hpp"
+#include "Core/Rigidbody2D.hpp"
 #include "Editor/EditorUI.hpp"
 #include <fstream>
 #include <sstream>
@@ -36,6 +37,24 @@ namespace Kiaak::Core
             out << "    ANIMATOR clipIndex " << anim->GetClipIndex() << "\n";
         if (auto *cam = go->GetComponent<Camera>())
             out << "    CAMERA orthoSize " << cam->GetOrthographicSize() << " zoom " << cam->GetZoom() << "\n";
+
+        if (auto *rb = go->GetComponent<Rigidbody2D>())
+        {
+            const char *typeStr = "Dynamic";
+            switch (rb->GetBodyType())
+            {
+            case Rigidbody2D::BodyType::Static: typeStr = "Static"; break;
+            case Rigidbody2D::BodyType::Kinematic: typeStr = "Kinematic"; break;
+            case Rigidbody2D::BodyType::Dynamic: default: typeStr = "Dynamic"; break;
+            }
+            out << "    RIGIDBODY2D "
+                << "type " << typeStr
+                << " mass " << rb->GetMass()
+                << " damping " << rb->GetLinearDamping()
+                << " gravityScale " << rb->GetGravityScale()
+                << " useGravity " << (rb->GetUseGravity() ? 1 : 0)
+                << "\n";
+        }
     }
 
     bool SceneSerialization::SaveAllScenes(SceneManager *manager, const std::string &filePath)
@@ -56,6 +75,12 @@ namespace Kiaak::Core
             {
                 if (auto *go = scene->GetDesignatedCamera()->GetGameObject())
                     out << "  ACTIVE_CAMERA " << go->GetName() << "\n";
+            }
+            // Per-scene physics settings
+            if (auto *phys = scene->GetPhysics2D())
+            {
+                auto g = phys->GetGravity();
+                out << "  PHYSICS2D gravity " << g.x << ' ' << g.y << "\n";
             }
             for (auto *go : scene->GetAllGameObjects())
             {
@@ -114,6 +139,19 @@ namespace Kiaak::Core
                 if (goName.rfind("EditorCamera", 0) == 0)
                     continue;
                 currentScene->CreateGameObject(goName);
+            }
+            else if (token == "PHYSICS2D" && currentScene)
+            {
+                std::string lbl;
+                while (iss >> lbl)
+                {
+                    if (lbl == "gravity")
+                    {
+                        float gx = 0.0f, gy = -9.81f;
+                        iss >> gx >> gy;
+                        currentScene->GetPhysics2D()->SetGravity({gx, gy});
+                    }
+                }
             }
             else if (token == "TRANSFORM" && currentScene)
             {
@@ -204,6 +242,45 @@ namespace Kiaak::Core
                     cam->SetZoom(zoom);
                 }
             }
+            else if (token == "RIGIDBODY2D" && currentScene)
+            {
+                auto objs = currentScene->GetAllGameObjects();
+                if (objs.empty())
+                    continue;
+                auto *go = objs.back();
+                std::string lbl;
+                std::string typeStr = "Dynamic";
+                float mass = 1.0f;
+                float damping = 0.0f;
+                float gravityScale = 1.0f;
+                int useGravity = 1;
+                while (iss >> lbl)
+                {
+                    if (lbl == "type")
+                        iss >> typeStr;
+                    else if (lbl == "mass")
+                        iss >> mass;
+                    else if (lbl == "damping")
+                        iss >> damping;
+                    else if (lbl == "gravityScale")
+                        iss >> gravityScale;
+                    else if (lbl == "useGravity")
+                        iss >> useGravity;
+                }
+                auto *rb = go->GetComponent<Rigidbody2D>();
+                if (!rb) rb = go->AddComponent<Rigidbody2D>();
+                if (rb)
+                {
+                    Rigidbody2D::BodyType bt = Rigidbody2D::BodyType::Dynamic;
+                    if (typeStr == "Static") bt = Rigidbody2D::BodyType::Static;
+                    else if (typeStr == "Kinematic") bt = Rigidbody2D::BodyType::Kinematic;
+                    rb->SetBodyType(bt);
+                    rb->SetMass(mass);
+                    rb->SetLinearDamping(damping);
+                    rb->SetGravityScale(gravityScale);
+                    rb->SetUseGravity(useGravity != 0);
+                }
+            }
         }
         for (auto &[sc, goName] : pendingActive)
         {
@@ -237,6 +314,11 @@ namespace Kiaak::Core
         {
             if (auto *go = scene->GetDesignatedCamera()->GetGameObject())
                 out << "  ACTIVE_CAMERA " << go->GetName() << "\n";
+        }
+        if (auto *phys = scene->GetPhysics2D())
+        {
+            auto g = phys->GetGravity();
+            out << "  PHYSICS2D gravity " << g.x << ' ' << g.y << "\n";
         }
         for (auto *go : scene->GetAllGameObjects())
         {
@@ -290,6 +372,19 @@ namespace Kiaak::Core
                 if (goName.rfind("EditorCamera", 0) == 0)
                     continue;
                 currentScene->CreateGameObject(goName);
+            }
+            else if (token == "PHYSICS2D" && currentScene)
+            {
+                std::string lbl;
+                while (iss >> lbl)
+                {
+                    if (lbl == "gravity")
+                    {
+                        float gx = 0.0f, gy = -9.81f;
+                        iss >> gx >> gy;
+                        currentScene->GetPhysics2D()->SetGravity({gx, gy});
+                    }
+                }
             }
             else if (token == "TRANSFORM" && currentScene)
             {
@@ -378,6 +473,45 @@ namespace Kiaak::Core
                 {
                     cam->SetOrthographicSize(ortho);
                     cam->SetZoom(zoom);
+                }
+            }
+            else if (token == "RIGIDBODY2D" && currentScene)
+            {
+                auto objs = currentScene->GetAllGameObjects();
+                if (objs.empty())
+                    continue;
+                auto *go = objs.back();
+                std::string lbl;
+                std::string typeStr = "Dynamic";
+                float mass = 1.0f;
+                float damping = 0.0f;
+                float gravityScale = 1.0f;
+                int useGravity = 1;
+                while (iss >> lbl)
+                {
+                    if (lbl == "type")
+                        iss >> typeStr;
+                    else if (lbl == "mass")
+                        iss >> mass;
+                    else if (lbl == "damping")
+                        iss >> damping;
+                    else if (lbl == "gravityScale")
+                        iss >> gravityScale;
+                    else if (lbl == "useGravity")
+                        iss >> useGravity;
+                }
+                auto *rb = go->GetComponent<Rigidbody2D>();
+                if (!rb) rb = go->AddComponent<Rigidbody2D>();
+                if (rb)
+                {
+                    Rigidbody2D::BodyType bt = Rigidbody2D::BodyType::Dynamic;
+                    if (typeStr == "Static") bt = Rigidbody2D::BodyType::Static;
+                    else if (typeStr == "Kinematic") bt = Rigidbody2D::BodyType::Kinematic;
+                    rb->SetBodyType(bt);
+                    rb->SetMass(mass);
+                    rb->SetLinearDamping(damping);
+                    rb->SetGravityScale(gravityScale);
+                    rb->SetUseGravity(useGravity != 0);
                 }
             }
         }

@@ -2,6 +2,7 @@
 #include "Graphics/SpriteRenderer.hpp"
 #include "Core/Camera.hpp"
 #include "Core/Animator.hpp"
+#include "Core/Rigidbody2D.hpp"
 #include "Editor/EditorCore.hpp"
 #include "Editor/EditorUI.hpp"
 #include "Core/SceneSerialization.hpp"
@@ -158,7 +159,8 @@ namespace Kiaak
     {
         if (auto *sc = GetCurrentScene())
         {
-            sc->FixedUpdate(fixedDeltaTime);
+            // Only run physics when not in editor mode
+            sc->FixedUpdate(fixedDeltaTime, !editorMode);
         }
     }
 
@@ -512,6 +514,32 @@ namespace Kiaak
         activeSceneCamera = Core::Camera::GetActive();
         if (editorCamera)
             editorCamera->SetActive();
+
+        // Restore transforms captured before play
+        if (auto *sc = GetCurrentScene())
+        {
+            for (auto *go : sc->GetAllGameObjects())
+            {
+                if (!go) continue;
+                auto it = prePlayTransforms.find(go->GetID());
+                if (it != prePlayTransforms.end())
+                {
+                    auto *t = go->GetTransform();
+                    if (t)
+                    {
+                        t->SetPosition(it->second.pos);
+                        t->SetRotation(it->second.rot);
+                        t->SetScale(it->second.scale);
+                    }
+                    // Reset simple physics state
+                    if (auto *rb = go->GetComponent<Kiaak::Core::Rigidbody2D>())
+                    {
+                        rb->SetVelocity(glm::vec2(0.0f));
+                    }
+                }
+            }
+        }
+        prePlayTransforms.clear();
     }
 
     void Engine::SwitchToPlayMode()
@@ -519,6 +547,15 @@ namespace Kiaak
         // Restore designated scene camera or previously active scene camera
         if (auto *sc = GetCurrentScene())
         {
+            // Capture current transforms for all objects to restore later
+            prePlayTransforms.clear();
+            for (auto *go : sc->GetAllGameObjects())
+            {
+                if (!go) continue;
+                auto *t = go->GetTransform();
+                if (!t) continue;
+                prePlayTransforms[go->GetID()] = { t->GetPosition(), t->GetRotation(), t->GetScale() };
+            }
             if (sc->GetDesignatedCamera())
             {
                 sc->GetDesignatedCamera()->SetActive();

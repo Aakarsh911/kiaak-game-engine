@@ -13,6 +13,7 @@ namespace Kiaak
 {
     namespace Core
     {
+    class Scene; // fwd
 
         /**
          * GameObject is the fundamental object in the scene
@@ -41,6 +42,10 @@ namespace Kiaak
             // Transform access (every GameObject has a Transform)
             Transform *GetTransform() { return m_transform; }
             const Transform *GetTransform() const { return m_transform; }
+
+            // Owning Scene
+            Scene* GetScene() const { return m_scene; }
+            void SetScene(Scene* sc) { m_scene = sc; }
 
             // Component management
             template <typename T, typename... Args>
@@ -89,6 +94,9 @@ namespace Kiaak
 
             // Transform is always present
             Transform *m_transform = nullptr;
+
+            // Back-pointer to owning scene (non-owning)
+            Scene* m_scene = nullptr;
 
             // Component storage
             std::vector<std::unique_ptr<Component>> m_components;

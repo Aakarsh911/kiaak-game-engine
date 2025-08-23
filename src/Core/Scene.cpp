@@ -27,6 +27,8 @@ namespace Kiaak
 
             auto gameObject = std::make_unique<GameObject>(uniqueName);
             GameObject *gameObjectPtr = gameObject.get();
+            // Set back-pointer to this scene
+            gameObjectPtr->SetScene(this);
 
             // Add to storage
             uint32_t id = gameObjectPtr->GetID();
@@ -188,8 +190,11 @@ namespace Kiaak
             }
         }
 
-        void Scene::FixedUpdate(double fixedDeltaTime)
+        void Scene::FixedUpdate(double fixedDeltaTime, bool runPhysics)
         {
+            // Step physics only when requested (play mode)
+            if (runPhysics)
+                m_physics2D.Step(fixedDeltaTime);
             for (auto &gameObject : m_gameObjects)
             {
                 if (gameObject->IsActive())

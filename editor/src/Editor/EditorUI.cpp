@@ -14,6 +14,7 @@
 #include <GLFW/glfw3.h>
 #include "Engine.hpp"
 #include "Core/Animator.hpp"
+#include "Core/Rigidbody2D.hpp"
 #include <functional>
 #include <filesystem>
 #include <vector>
@@ -716,6 +717,35 @@ namespace Kiaak
                             // Per-object context menu
                             if (ImGui::BeginPopupContextItem())
                             {
+                                bool hasSprite = node->GetComponent<Graphics::SpriteRenderer>() != nullptr;
+                                bool hasRB = node->GetComponent<Core::Rigidbody2D>() != nullptr;
+                                if (ImGui::MenuItem("Add Rigidbody 2D", nullptr, false, hasSprite && !hasRB))
+                                {
+                                    auto *rb = node->AddComponent<Core::Rigidbody2D>();
+                                    if (rb)
+                                    {
+                                        rb->SetGravityScale(1.0f);
+                                    }
+                                    if (sceneManager && Core::Project::HasPath())
+                                    {
+                                        // Save owning scene
+                                        for (auto &nm : sceneManager->GetSceneNames())
+                                        {
+                                            auto *sc = sceneManager->GetScene(nm);
+                                            if (!sc)
+                                                continue;
+                                            for (auto *go : sc->GetAllGameObjects())
+                                            {
+                                                if (go == node)
+                                                {
+                                                    Core::SceneSerialization::SaveSceneToFile(sc, Core::Project::GetScenesPath() + "/" + nm + ".scene");
+                                                    goto add_rb_saved;
+                                                }
+                                            }
+                                        }
+                                    }
+                                add_rb_saved:;
+                                }
                                 if (ImGui::MenuItem("Delete"))
                                 {
                                     // Mark for deferred deletion
@@ -1014,6 +1044,45 @@ namespace Kiaak
                                 }
                             }
                         }
+                    }
+                }
+
+                // Rigidbody2D component UI
+                if (auto *rb = selectedObject->GetComponent<Core::Rigidbody2D>())
+                {
+                    ImGui::Separator();
+                    ImGui::Text("Rigidbody 2D");
+                    bool enabled = rb->IsEnabled();
+                    if (ImGui::Checkbox("Enabled##Rigidbody2D", &enabled))
+                        rb->SetEnabled(enabled);
+
+                    // Body Type
+                    const char *types[] = {"Static", "Kinematic", "Dynamic"};
+                    int typeIndex = 2; // default Dynamic
+                    auto bt = rb->GetBodyType();
+                    if (bt == Core::Rigidbody2D::BodyType::Static) typeIndex = 0;
+                    else if (bt == Core::Rigidbody2D::BodyType::Kinematic) typeIndex = 1;
+                    if (ImGui::Combo("Body Type", &typeIndex, types, IM_ARRAYSIZE(types)))
+                    {
+                        Core::Rigidbody2D::BodyType newType = Core::Rigidbody2D::BodyType::Dynamic;
+                        if (typeIndex == 0) newType = Core::Rigidbody2D::BodyType::Static;
+                        else if (typeIndex == 1) newType = Core::Rigidbody2D::BodyType::Kinematic;
+                        rb->SetBodyType(newType);
+                    }
+
+                    // Gravity options
+                    bool useGrav = rb->GetUseGravity();
+                    if (ImGui::Checkbox("Use Gravity", &useGrav))
+                        rb->SetUseGravity(useGrav);
+                    float gScale = rb->GetGravityScale();
+                    if (ImGui::DragFloat("Gravity Scale", &gScale, 0.05f, -10.0f, 10.0f, "%.2f"))
+                        rb->SetGravityScale(gScale);
+
+                    // Optional: show global gravity (read-only)
+                    if (auto *sc = selectedObject->GetScene())
+                    {
+                        auto g = sc->GetPhysics2D()->GetGravity();
+                        ImGui::TextDisabled("Global Gravity: (%.2f, %.2f)", g.x, g.y);
                     }
                 }
             }
