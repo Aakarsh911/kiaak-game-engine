@@ -41,6 +41,66 @@ namespace Kiaak
     static const char *kAnimationClipsFile = "animation_clips.json";                 // saved in working dir
     static const char *kAnimationAssignmentsFile = "animation_assignments.json";     // mapping objectID->clip index
     static std::unordered_map<uint32_t, int> g_pendingAssignments;                   // loaded IDs awaiting scene objects
+    // Editor config persistence (e.g., texture filter mode)
+    static const char *kEditorConfigFile = "editor_config.json"; // stored in project root if a project is open, else cwd
+    static int g_savedFilterMode = -1;                           // track last saved to avoid redundant writes
+
+    static std::string GetEditorConfigPath()
+    {
+        if (Core::Project::HasPath())
+            return Core::Project::GetPath() + "/" + kEditorConfigFile;
+        return std::string(kEditorConfigFile);
+    }
+
+    static void SaveEditorConfig()
+    {
+        int currentFilter = (int)Texture::GetGlobalFilterMode();
+        if (currentFilter == g_savedFilterMode)
+            return; // no change
+        std::ofstream out(GetEditorConfigPath(), std::ios::trunc);
+        if (!out.is_open())
+            return;
+        // Minimal JSON with single field
+        out << "{\n  \"textureFilter\": " << currentFilter << "\n}";
+        g_savedFilterMode = currentFilter;
+    }
+
+    static void LoadEditorConfig()
+    {
+        std::ifstream in(GetEditorConfigPath());
+        if (!in.is_open())
+            return;
+        std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        // very small parse: look for "textureFilter" then a number
+        auto pos = content.find("textureFilter");
+        if (pos == std::string::npos)
+            return;
+        pos = content.find(':', pos);
+        if (pos == std::string::npos)
+            return;
+        ++pos;
+        while (pos < content.size() && isspace((unsigned char)content[pos]))
+            ++pos;
+        int val = 0;
+        bool neg = false;
+        if (pos < content.size() && content[pos] == '-')
+        {
+            neg = true; // should not happen, but handle anyway
+            ++pos;
+        }
+        while (pos < content.size() && isdigit((unsigned char)content[pos]))
+        {
+            val = val * 10 + (content[pos] - '0');
+            ++pos;
+        }
+        if (neg)
+            val = -val;
+        if (val == (int)Texture::FilterMode::Linear || val == (int)Texture::FilterMode::Nearest)
+        {
+            Texture::SetGlobalFilterMode(static_cast<Texture::FilterMode>(val));
+            g_savedFilterMode = val; // mark as loaded
+        }
+    }
 
     // Very tiny ad-hoc JSON (array of objects) writer (no escaping for simplicity)
     static void WriteClipsJSON(const std::vector<EditorUI::AnimationClipInfo> &clips, std::ostream &out)
@@ -333,6 +393,9 @@ namespace Kiaak
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
         ImGui::StyleColorsDark();
+
+        // Load editor config (e.g., texture filter) before loading assets so textures can be updated immediately
+        LoadEditorConfig();
 
         std::ifstream in(kAnimationClipsFile);
         if (in.good())
@@ -1208,6 +1271,8 @@ namespace Kiaak
                 {
                     Core::Project::SetPath(dir);
                     Core::Project::EnsureStructure();
+                    // Load project-specific editor config now that path is known
+                    LoadEditorConfig();
                     if (sceneManager)
                     {
                         for (auto &nm : sceneManager->GetSceneNames())
@@ -1231,6 +1296,9 @@ namespace Kiaak
                 {
                     Core::Project::SetPath(dir);
                     Core::Project::EnsureStructure();
+                    // New project: save initial config so file exists, then load (redundant but safe)
+                    SaveEditorConfig();
+                    LoadEditorConfig();
                     if (sceneManager && sceneManager->GetSceneNames().empty())
                         sceneManager->CreateScene("MainScene");
                     // Persist current scenes
@@ -1261,6 +1329,12 @@ namespace Kiaak
             if (ImGui::Combo("##TexFilter", &currentFilter, filterLabels, IM_ARRAYSIZE(filterLabels)))
             {
                 Texture::SetGlobalFilterMode(static_cast<Texture::FilterMode>(currentFilter));
+                SaveEditorConfig();
+            }
+            else
+            {
+                // Periodic check to ensure we flush config if changed elsewhere
+                SaveEditorConfig();
             }
 
             float windowW = ImGui::GetWindowSize().x;
