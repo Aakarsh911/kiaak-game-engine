@@ -3,6 +3,7 @@
 #include "Core/Scene.hpp"
 #include "Core/GameObject.hpp"
 #include "Core/SceneManager.hpp"
+#include "Core/Collider2D.hpp"
 #include <string>
 #include <vector>
 

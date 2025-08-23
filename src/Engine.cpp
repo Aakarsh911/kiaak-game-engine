@@ -3,6 +3,7 @@
 #include "Core/Camera.hpp"
 #include "Core/Animator.hpp"
 #include "Core/Rigidbody2D.hpp"
+#include "Core/Collider2D.hpp"
 #include "Editor/EditorCore.hpp"
 #include "Editor/EditorUI.hpp"
 #include "Core/SceneSerialization.hpp"
@@ -172,6 +173,37 @@ namespace Kiaak
         if (auto *sc = GetCurrentScene())
         {
             sc->Render(editorMode); // include disabled components when in editor mode
+        }
+
+        // Draw collider outlines in editor mode
+        if (editorMode)
+        {
+            if (auto *sc = GetCurrentScene())
+            {
+                if (auto *phys = sc->GetPhysics2D())
+                {
+                    for (auto &rec : phys->GetColliders())
+                    {
+                        auto *c = rec.col;
+                        if (!c || !c->IsEnabled())
+                            continue;
+                        glm::vec2 mn, mx;
+                        c->GetAABB(mn, mx);
+                        glm::vec2 size = mx - mn;
+                        glm::vec2 center = (mn + mx) * 0.5f;
+                        float z = 0.0f;
+                        if (auto *go = c->GetGameObject())
+                            if (auto *t = go->GetTransform())
+                                z = t->GetPosition().z + 0.02f;
+                        glm::vec4 col = c->IsTrigger() ? glm::vec4(1, 1, 0, 0.6f) : glm::vec4(0, 1, 0, 0.6f);
+                        float thick = 0.01f;
+                        renderer->DrawQuad(glm::vec3(center.x, mx.y + thick * 0.5f, z), glm::vec2(size.x + thick * 2.f, thick), col);
+                        renderer->DrawQuad(glm::vec3(center.x, mn.y - thick * 0.5f, z), glm::vec2(size.x + thick * 2.f, thick), col);
+                        renderer->DrawQuad(glm::vec3(mn.x - thick * 0.5f, center.y, z), glm::vec2(thick, size.y), col);
+                        renderer->DrawQuad(glm::vec3(mx.x + thick * 0.5f, center.y, z), glm::vec2(thick, size.y), col);
+                    }
+                }
+            }
         }
 
         if (editorCore)
@@ -520,7 +552,8 @@ namespace Kiaak
         {
             for (auto *go : sc->GetAllGameObjects())
             {
-                if (!go) continue;
+                if (!go)
+                    continue;
                 auto it = prePlayTransforms.find(go->GetID());
                 if (it != prePlayTransforms.end())
                 {
@@ -551,10 +584,12 @@ namespace Kiaak
             prePlayTransforms.clear();
             for (auto *go : sc->GetAllGameObjects())
             {
-                if (!go) continue;
+                if (!go)
+                    continue;
                 auto *t = go->GetTransform();
-                if (!t) continue;
-                prePlayTransforms[go->GetID()] = { t->GetPosition(), t->GetRotation(), t->GetScale() };
+                if (!t)
+                    continue;
+                prePlayTransforms[go->GetID()] = {t->GetPosition(), t->GetRotation(), t->GetScale()};
             }
             if (sc->GetDesignatedCamera())
             {

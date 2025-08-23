@@ -15,6 +15,8 @@
 #include "Engine.hpp"
 #include "Core/Animator.hpp"
 #include "Core/Rigidbody2D.hpp"
+#include "Core/Collider2D.hpp"
+#include "Core/CollisionLogger.hpp"
 #include <functional>
 #include <filesystem>
 #include <vector>
@@ -719,6 +721,7 @@ namespace Kiaak
                             {
                                 bool hasSprite = node->GetComponent<Graphics::SpriteRenderer>() != nullptr;
                                 bool hasRB = node->GetComponent<Core::Rigidbody2D>() != nullptr;
+                                bool hasBox = node->GetComponent<Core::BoxCollider2D>() != nullptr;
                                 if (ImGui::MenuItem("Add Rigidbody 2D", nullptr, false, hasSprite && !hasRB))
                                 {
                                     auto *rb = node->AddComponent<Core::Rigidbody2D>();
@@ -745,6 +748,15 @@ namespace Kiaak
                                         }
                                     }
                                 add_rb_saved:;
+                                }
+                                if (ImGui::MenuItem("Add Box Collider 2D", nullptr, false, hasSprite && !hasBox))
+                                {
+                                    node->AddComponent<Core::BoxCollider2D>();
+                                }
+                                bool hasLogger = node->GetComponent<Core::CollisionLogger>() != nullptr;
+                                if (ImGui::MenuItem("Add Collision Logger", nullptr, false, !hasLogger))
+                                {
+                                    node->AddComponent<Core::CollisionLogger>();
                                 }
                                 if (ImGui::MenuItem("Delete"))
                                 {
@@ -1060,13 +1072,17 @@ namespace Kiaak
                     const char *types[] = {"Static", "Kinematic", "Dynamic"};
                     int typeIndex = 2; // default Dynamic
                     auto bt = rb->GetBodyType();
-                    if (bt == Core::Rigidbody2D::BodyType::Static) typeIndex = 0;
-                    else if (bt == Core::Rigidbody2D::BodyType::Kinematic) typeIndex = 1;
+                    if (bt == Core::Rigidbody2D::BodyType::Static)
+                        typeIndex = 0;
+                    else if (bt == Core::Rigidbody2D::BodyType::Kinematic)
+                        typeIndex = 1;
                     if (ImGui::Combo("Body Type", &typeIndex, types, IM_ARRAYSIZE(types)))
                     {
                         Core::Rigidbody2D::BodyType newType = Core::Rigidbody2D::BodyType::Dynamic;
-                        if (typeIndex == 0) newType = Core::Rigidbody2D::BodyType::Static;
-                        else if (typeIndex == 1) newType = Core::Rigidbody2D::BodyType::Kinematic;
+                        if (typeIndex == 0)
+                            newType = Core::Rigidbody2D::BodyType::Static;
+                        else if (typeIndex == 1)
+                            newType = Core::Rigidbody2D::BodyType::Kinematic;
                         rb->SetBodyType(newType);
                     }
 
@@ -1084,6 +1100,24 @@ namespace Kiaak
                         auto g = sc->GetPhysics2D()->GetGravity();
                         ImGui::TextDisabled("Global Gravity: (%.2f, %.2f)", g.x, g.y);
                     }
+                }
+                if (auto *bc = selectedObject->GetComponent<Core::BoxCollider2D>())
+                {
+                    ImGui::Separator();
+                    ImGui::Text("Box Collider 2D");
+                    bool enabled = bc->IsEnabled();
+                    if (ImGui::Checkbox("Enabled##BoxCol", &enabled))
+                        bc->SetEnabled(enabled);
+                    bool trig = bc->IsTrigger();
+                    if (ImGui::Checkbox("Is Trigger", &trig))
+                        bc->SetTrigger(trig);
+                    glm::vec2 size = bc->GetSize();
+                    if (ImGui::DragFloat2("Size", &size.x, 0.01f, 0.0001f, 10000.f))
+                        bc->SetSize(size);
+                    glm::vec2 off = bc->GetOffset();
+                    if (ImGui::DragFloat2("Offset", &off.x, 0.01f, -10000.f, 10000.f))
+                        bc->SetOffset(off);
+                    ImGui::TextDisabled("Auto-sized from sprite if zero at Start");
                 }
             }
             else
