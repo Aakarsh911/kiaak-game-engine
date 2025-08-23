@@ -6,8 +6,14 @@
 #include "Core/Camera.hpp"
 #include "Core/SceneSerialization.hpp"
 #include "Core/Project.hpp"
+#include <map>
+#include <unordered_map>
+#include <memory>
+#include "Graphics/Texture.hpp"
+#include <fstream>
 #include <GLFW/glfw3.h>
 #include "Engine.hpp"
+#include "Core/Animator.hpp"
 #include <functional>
 #include <filesystem>
 #include <vector>
@@ -22,6 +28,246 @@ namespace Kiaak
 
     static GLFWwindow *currentWindow = nullptr;
     static std::vector<std::string> g_assetFiles;
+    // Animation clip storage (editor only)
+    static std::vector<EditorUI::AnimationClipInfo> g_animationClips;
+    static int g_selectedClipIndex = -1;
+    static bool g_openSheetEditor = false;
+    static int g_sheetEditorClipIndex = -1;                                          // which clip is being edited
+    static std::vector<int> g_tempSelection;                                         // selection order while editing
+    static std::map<Core::GameObject *, int> g_objectClipAssignments;                // mapping sprite object -> clip index
+    static std::unordered_map<std::string, std::shared_ptr<Texture>> g_textureCache; // editor preview cache
+    static const char *kAnimationClipsFile = "animation_clips.json";                 // saved in working dir
+    static const char *kAnimationAssignmentsFile = "animation_assignments.json";     // mapping objectID->clip index
+    static std::unordered_map<uint32_t, int> g_pendingAssignments;                   // loaded IDs awaiting scene objects
+
+    // Very tiny ad-hoc JSON (array of objects) writer (no escaping for simplicity)
+    static void WriteClipsJSON(const std::vector<EditorUI::AnimationClipInfo> &clips, std::ostream &out)
+    {
+        out << "[\n";
+        for (size_t i = 0; i < clips.size(); ++i)
+        {
+            auto &c = clips[i];
+            out << "  {\n";
+            out << "    \"name\": \"" << c.name << "\",\n";
+            out << "    \"texturePath\": \"" << c.texturePath << "\",\n";
+            out << "    \"hFrames\": " << c.hFrames << ",\n";
+            out << "    \"vFrames\": " << c.vFrames << ",\n";
+            out << "    \"cellWidth\": " << c.cellWidth << ",\n";
+            out << "    \"cellHeight\": " << c.cellHeight << ",\n";
+            out << "    \"sequence\": [";
+            for (size_t s = 0; s < c.sequence.size(); ++s)
+            {
+                out << c.sequence[s];
+                if (s + 1 < c.sequence.size())
+                    out << ",";
+            }
+            out << "],\n";
+            out << "    \"fps\": " << c.fps << ",\n";
+            out << "    \"autoPlay\": " << (c.autoPlay ? 1 : 0) << "\n";
+            out << "  }" << (i + 1 < clips.size() ? "," : "") << "\n";
+        }
+        out << "]";
+    }
+
+    // Minimal parser: expects same format produced above. Skips errors.
+    static void LoadClipsJSON(std::istream &in, std::vector<EditorUI::AnimationClipInfo> &outClips)
+    {
+        std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        size_t pos = 0;
+        auto skipWS = [&]()
+        { while (pos < content.size() && isspace((unsigned char)content[pos])) ++pos; };
+        auto parseNumber = [&]() -> double
+        {
+            int sign = 1;
+            if (pos < content.size() && content[pos] == '-')
+            {
+                sign = -1;
+                ++pos;
+            }
+            double num = 0.0;
+            while (pos < content.size() && isdigit((unsigned char)content[pos]))
+            {
+                num = num * 10 + (content[pos] - '0');
+                ++pos;
+            }
+            if (pos < content.size() && content[pos] == '.')
+            {
+                ++pos;
+                double frac = 0.0, base = 0.1;
+                while (pos < content.size() && isdigit((unsigned char)content[pos]))
+                {
+                    frac += (content[pos] - '0') * base;
+                    base *= 0.1;
+                    ++pos;
+                }
+                num += frac;
+            }
+            return num * sign;
+        };
+        skipWS();
+        if (pos >= content.size() || content[pos] != '[')
+            return;
+        ++pos; // skip [
+        while (true)
+        {
+            skipWS();
+            if (pos >= content.size())
+                break;
+            if (content[pos] == ']')
+            {
+                ++pos;
+                break;
+            }
+            if (content[pos] != '{')
+            {
+                ++pos;
+                continue;
+            }
+            ++pos; // object
+            EditorUI::AnimationClipInfo clip;
+            bool any = false;
+            while (true)
+            {
+                skipWS();
+                if (pos >= content.size())
+                    break;
+                if (content[pos] == '}')
+                {
+                    ++pos;
+                    break;
+                }
+                if (content[pos] != '"')
+                {
+                    ++pos;
+                    continue;
+                }
+                size_t kStart = ++pos;
+                while (pos < content.size() && content[pos] != '"')
+                    ++pos;
+                if (pos >= content.size())
+                    break;
+                std::string key = content.substr(kStart, pos - kStart);
+                ++pos;
+                skipWS();
+                if (pos < content.size() && content[pos] == ':')
+                    ++pos;
+                skipWS();
+                if (key == "name" || key == "texturePath")
+                {
+                    if (pos < content.size() && content[pos] == '"')
+                    {
+                        size_t vStart = ++pos;
+                        while (pos < content.size() && content[pos] != '"')
+                            ++pos;
+                        if (pos >= content.size())
+                            break;
+                        std::string val = content.substr(vStart, pos - vStart);
+                        ++pos;
+                        if (key == "name")
+                            clip.name = val;
+                        else
+                            clip.texturePath = val;
+                    }
+                }
+                else if (key == "hFrames" || key == "vFrames" || key == "cellWidth" || key == "cellHeight")
+                {
+                    int sign = 1;
+                    if (pos < content.size() && content[pos] == '-')
+                    {
+                        sign = -1;
+                        ++pos;
+                    }
+                    int num = 0;
+                    while (pos < content.size() && isdigit((unsigned char)content[pos]))
+                    {
+                        num = num * 10 + (content[pos] - '0');
+                        ++pos;
+                    }
+                    num *= sign;
+                    if (key == "hFrames")
+                        clip.hFrames = num;
+                    else if (key == "vFrames")
+                        clip.vFrames = num;
+                    else if (key == "cellWidth")
+                        clip.cellWidth = num;
+                    else
+                        clip.cellHeight = num;
+                }
+                else if (key == "sequence")
+                {
+                    skipWS();
+                    if (pos < content.size() && content[pos] == '[')
+                    {
+                        ++pos;
+                        skipWS();
+                        while (pos < content.size() && content[pos] != ']')
+                        {
+                            int sign = 1;
+                            if (content[pos] == '-')
+                            {
+                                sign = -1;
+                                ++pos;
+                            }
+                            int num = 0;
+                            while (pos < content.size() && isdigit((unsigned char)content[pos]))
+                            {
+                                num = num * 10 + (content[pos] - '0');
+                                ++pos;
+                            }
+                            clip.sequence.push_back(num * sign);
+                            skipWS();
+                            if (pos < content.size() && content[pos] == ',')
+                            {
+                                ++pos;
+                                skipWS();
+                            }
+                        }
+                        if (pos < content.size() && content[pos] == ']')
+                            ++pos;
+                    }
+                }
+                else if (key == "fps")
+                {
+                    clip.fps = (float)parseNumber();
+                }
+                else if (key == "autoPlay")
+                {
+                    clip.autoPlay = parseNumber() != 0.0;
+                }
+                any = true;
+                skipWS();
+                if (pos < content.size() && content[pos] == ',')
+                {
+                    ++pos;
+                }
+            }
+            if (any)
+            {
+                clip.dirty = false;
+                outClips.push_back(std::move(clip));
+            }
+            skipWS();
+            if (pos < content.size() && content[pos] == ',')
+            {
+                ++pos;
+                continue;
+            }
+        }
+    }
+
+    static std::shared_ptr<Texture> GetOrLoadTexture(const std::string &path)
+    {
+        if (path.empty())
+            return nullptr;
+        auto it = g_textureCache.find(path);
+        if (it != g_textureCache.end())
+            return it->second;
+        auto tex = std::make_shared<Texture>(path);
+        if (!tex->IsValid())
+            return nullptr;
+        g_textureCache[path] = tex;
+        return tex;
+    }
     static std::filesystem::file_time_type g_lastAssetScanTime{};
     static double g_lastAssetRefreshCheck = 0.0; // seconds since start
     static const char *kAssetDir = "assets";     // fallback when no project
@@ -85,6 +331,105 @@ namespace Kiaak
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
         ImGui::StyleColorsDark();
+
+        std::ifstream in(kAnimationClipsFile);
+        if (in.good())
+        {
+            LoadClipsJSON(in, g_animationClips);
+        }
+        // Load assignments file
+        g_pendingAssignments.clear();
+        std::ifstream ain(kAnimationAssignmentsFile);
+        if (ain.good())
+        {
+            std::string content((std::istreambuf_iterator<char>(ain)), std::istreambuf_iterator<char>());
+            size_t pos = 0;
+            auto ws = [&]()
+            { while (pos<content.size() && isspace((unsigned char)content[pos])) ++pos; };
+            ws();
+            if (pos < content.size() && content[pos] == '{')
+            {
+                ++pos;
+                while (true)
+                {
+                    ws();
+                    if (pos >= content.size())
+                        break;
+                    if (content[pos] == '}')
+                    {
+                        ++pos;
+                        break;
+                    }
+                    if (content[pos] == '"')
+                    {
+                        size_t s = ++pos;
+                        while (pos < content.size() && content[pos] != '"')
+                            ++pos;
+                        if (pos >= content.size())
+                            break;
+                        std::string key = content.substr(s, pos - s);
+                        ++pos;
+                        ws();
+                        if (pos < content.size() && content[pos] == ':')
+                            ++pos;
+                        ws();
+                        int sign = 1;
+                        if (content[pos] == '-')
+                        {
+                            sign = -1;
+                            ++pos;
+                        }
+                        int num = 0;
+                        while (pos < content.size() && isdigit((unsigned char)content[pos]))
+                        {
+                            num = num * 10 + (content[pos] - '0');
+                            ++pos;
+                        }
+                        num *= sign;
+                        try
+                        {
+                            uint32_t id = (uint32_t)std::stoul(key);
+                            g_pendingAssignments[id] = num;
+                        }
+                        catch (...)
+                        {
+                        }
+                        ws();
+                        if (pos < content.size() && content[pos] == ',')
+                        {
+                            ++pos;
+                            continue;
+                        }
+                    }
+                    else
+                    {
+                        ++pos;
+                    }
+                }
+            }
+        }
+    }
+
+    void EditorUI::ApplyPendingAnimationAssignments(Core::Scene *scene)
+    {
+        if (!scene || g_pendingAssignments.empty())
+            return;
+        auto objects = scene->GetAllGameObjects();
+        for (auto *go : objects)
+        {
+            if (!go)
+                continue;
+            auto it = g_pendingAssignments.find(go->GetID());
+            if (it != g_pendingAssignments.end())
+            {
+                g_objectClipAssignments[go] = it->second;
+                // Auto-add animator and set clip
+                if (!go->GetComponent<Core::Animator>())
+                    go->AddComponent<Core::Animator>();
+                if (auto *anim = go->GetComponent<Core::Animator>())
+                    anim->SetClipIndex(it->second);
+            }
+        }
     }
 
     void EditorUI::InitializeForWindow(GLFWwindow *window)
@@ -96,6 +441,30 @@ namespace Kiaak
 
     void EditorUI::Shutdown()
     {
+        std::ofstream out(kAnimationClipsFile);
+        if (out.good())
+            WriteClipsJSON(g_animationClips, out);
+        // Save object assignments (by ID)
+        if (!g_objectClipAssignments.empty())
+        {
+            std::ofstream aout(kAnimationAssignmentsFile);
+            if (aout.good())
+            {
+                aout << "{\n";
+                size_t count = 0;
+                size_t total = g_objectClipAssignments.size();
+                for (auto &pair : g_objectClipAssignments)
+                {
+                    if (!pair.first)
+                        continue;
+                    aout << "  \"" << pair.first->GetID() << "\": " << pair.second;
+                    if (++count < total)
+                        aout << ",";
+                    aout << "\n";
+                }
+                aout << "}";
+            }
+        }
         ImGui_ImplOpenGL3_Shutdown();
         ImGui_ImplGlfw_Shutdown();
         ImGui::DestroyContext();
@@ -120,6 +489,43 @@ namespace Kiaak
         constexpr float kTopBarHeight = 34.0f; // must match top bar height
         ImGui::SetNextWindowPos(ImVec2(0, kTopBarHeight));
         ImGui::SetNextWindowSize(ImVec2(320, ImGui::GetIO().DisplaySize.y - 200 - kTopBarHeight));
+        // Clip settings / controls for selected clip
+        if (g_selectedClipIndex >= 0 && g_selectedClipIndex < (int)g_animationClips.size())
+        {
+            auto &clipSettings = g_animationClips[g_selectedClipIndex];
+            ImGui::Separator();
+            ImGui::Text("Settings");
+            ImGui::SliderFloat("FPS", &clipSettings.fps, 1.0f, 60.0f, "%.1f");
+            ImGui::Checkbox("Auto Play", &clipSettings.autoPlay);
+            // Runtime play/stop convenience (affects any selected object's animator using this clip)
+            if (ImGui::Button("Play"))
+            {
+                // Find any gameobject assigned this clip and start its animator
+                for (auto &pair : g_objectClipAssignments)
+                {
+                    if (pair.second == g_selectedClipIndex && pair.first)
+                    {
+                        if (auto *anim = pair.first->GetComponent<Core::Animator>())
+                        {
+                            anim->SetClipIndex(g_selectedClipIndex);
+                            anim->Play();
+                        }
+                    }
+                }
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Stop"))
+            {
+                for (auto &pair : g_objectClipAssignments)
+                {
+                    if (pair.second == g_selectedClipIndex && pair.first)
+                    {
+                        if (auto *anim = pair.first->GetComponent<Core::Animator>())
+                            anim->Stop();
+                    }
+                }
+            }
+        }
         if (ImGui::Begin("Scene Hierarchy", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse))
         {
             if (sceneManager)
@@ -127,6 +533,15 @@ namespace Kiaak
                 // Context menu on empty space inside hierarchy window
                 if (ImGui::BeginPopupContextWindow("HierarchyContext", ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems))
                 {
+                    if (ImGui::MenuItem("New Animation"))
+                    {
+                        // Create empty clip and open sheet editor (will prompt for sprite sheet via asset selection inside editor)
+                        EditorUI::AnimationClipInfo clip;
+                        clip.name = "Anim" + std::to_string((int)g_animationClips.size() + 1);
+                        g_animationClips.push_back(clip);
+                        g_sheetEditorClipIndex = (int)g_animationClips.size() - 1;
+                        g_openSheetEditor = true;
+                    }
                     if (ImGui::MenuItem("New Scene"))
                     {
                         static int sceneCounter = 1;
@@ -136,7 +551,6 @@ namespace Kiaak
                             sceneManager->SwitchToScene(name);
                             activeScene = sceneManager->GetCurrentScene();
                             selectedObject = nullptr;
-                            // Per-scene save
                             if (Core::Project::HasPath())
                             {
                                 auto sn = sceneManager->GetSceneName(activeScene);
@@ -514,6 +928,26 @@ namespace Kiaak
                         sprite->SetEnabled(enabled);
                     }
                     ImGui::Text("Has texture: %s", sprite->GetTexture() ? "Yes" : "No");
+                    if (!g_animationClips.empty())
+                    {
+                        ImGui::Separator();
+                        ImGui::Text("Animation");
+                        std::vector<const char *> names;
+                        names.reserve(g_animationClips.size() + 1);
+                        names.push_back("<None>");
+                        for (auto &c : g_animationClips)
+                            names.push_back(c.name.c_str());
+                        int assigned = EditorUI::GetAssignedClip(selectedObject); // -1 none
+                        int current = assigned + 1;                               // shift
+                        if (ImGui::Combo("Clip", &current, names.data(), (int)names.size()))
+                        {
+                            if (current == 0)
+                                EditorUI::SetAssignedClip(selectedObject, -1);
+                            else
+                                EditorUI::SetAssignedClip(selectedObject, current - 1);
+                        }
+                        ImGui::TextDisabled("Assignments saved to animation_assignments.json");
+                    }
                 }
 
                 // Camera component UI
@@ -669,8 +1103,11 @@ namespace Kiaak
 
     void EditorUI::RenderAssetBrowser()
     {
-        ImGui::SetNextWindowPos(ImVec2(0, ImGui::GetIO().DisplaySize.y - 200));
-        ImGui::SetNextWindowSize(ImVec2(ImGui::GetIO().DisplaySize.x, 200));
+        // Left column bottom panel (same width as hierarchy: 320)
+        float hierarchyBottomY = ImGui::GetIO().DisplaySize.y - 200; // current hard-coded bottom row height 200
+        constexpr float leftWidth = 320.0f;
+        ImGui::SetNextWindowPos(ImVec2(0, hierarchyBottomY));
+        ImGui::SetNextWindowSize(ImVec2(leftWidth, 200));
         if (ImGui::Begin("Asset Browser", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse))
         {
             if (!Core::Project::HasPath())
@@ -796,6 +1233,356 @@ namespace Kiaak
                 {
                     // Handle asset selection
                 }
+            }
+            ImGui::EndChild();
+        }
+        ImGui::End();
+    }
+
+    void EditorUI::RenderAnimatorPanel()
+    {
+        // Bottom row to the right of asset browser fills remaining width
+        float hierarchyBottomY = ImGui::GetIO().DisplaySize.y - 200; // same 200px height row
+        constexpr float leftWidth = 320.0f;
+        float remainingWidth = ImGui::GetIO().DisplaySize.x - leftWidth;
+        if (remainingWidth < 10)
+            remainingWidth = 10;
+        ImGui::SetNextWindowPos(ImVec2(leftWidth, hierarchyBottomY));
+        ImGui::SetNextWindowSize(ImVec2(remainingWidth, 200));
+        if (ImGui::Begin("Animator", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse))
+        {
+            ImGui::Text("Animation Clips");
+            ImGui::Separator();
+            if (ImGui::Button("Save Clips"))
+            {
+                std::ofstream out(kAnimationClipsFile);
+                if (out.good())
+                    WriteClipsJSON(g_animationClips, out);
+            }
+            // List clips
+            for (int i = 0; i < (int)g_animationClips.size(); ++i)
+            {
+                auto &c = g_animationClips[i];
+                ImGui::PushID(i);
+                bool selected = (i == g_selectedClipIndex);
+                if (ImGui::Selectable(c.name.c_str(), selected))
+                    g_selectedClipIndex = i;
+                if (ImGui::BeginPopupContextItem("ClipCtx"))
+                {
+                    if (ImGui::MenuItem("Edit Sheet"))
+                    {
+                        g_sheetEditorClipIndex = i;
+                        g_openSheetEditor = true;
+                    }
+                    if (ImGui::MenuItem("Delete"))
+                    {
+                        g_animationClips.erase(g_animationClips.begin() + i);
+                        if (g_selectedClipIndex >= (int)g_animationClips.size())
+                            g_selectedClipIndex = (int)g_animationClips.size() - 1;
+                        ImGui::EndPopup();
+                        ImGui::PopID();
+                        break;
+                    }
+                    ImGui::EndPopup();
+                }
+                ImGui::PopID();
+            }
+            if (ImGui::Button("New Clip"))
+            {
+                AnimationClipInfo clip;
+                clip.name = "Anim" + std::to_string((int)g_animationClips.size() + 1);
+                g_animationClips.push_back(clip);
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Edit"))
+            {
+                if (g_selectedClipIndex >= 0)
+                {
+                    g_sheetEditorClipIndex = g_selectedClipIndex;
+                    g_openSheetEditor = true;
+                }
+            }
+            // Settings for selected clip (fps/autoplay + runtime control)
+            if (g_selectedClipIndex >= 0 && g_selectedClipIndex < (int)g_animationClips.size())
+            {
+                auto &cset = g_animationClips[g_selectedClipIndex];
+                ImGui::Separator();
+                ImGui::Text("Clip Settings");
+                ImGui::SliderFloat("FPS", &cset.fps, 1.0f, 60.0f, "%.1f");
+                ImGui::Checkbox("Auto Play", &cset.autoPlay);
+                if (ImGui::Button("Play"))
+                {
+                    for (auto &pair : g_objectClipAssignments)
+                    {
+                        if (pair.second == g_selectedClipIndex && pair.first)
+                        {
+                            if (auto *anim = pair.first->GetComponent<Core::Animator>())
+                            {
+                                anim->SetClipIndex(g_selectedClipIndex);
+                                anim->Play();
+                            }
+                        }
+                    }
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Stop"))
+                {
+                    for (auto &pair : g_objectClipAssignments)
+                    {
+                        if (pair.second == g_selectedClipIndex && pair.first)
+                        {
+                            if (auto *anim = pair.first->GetComponent<Core::Animator>())
+                                anim->Stop();
+                        }
+                    }
+                }
+            }
+            // Selected clip frame thumbnails
+            if (g_selectedClipIndex >= 0 && g_selectedClipIndex < (int)g_animationClips.size())
+            {
+                auto &clip = g_animationClips[g_selectedClipIndex];
+                if (!clip.texturePath.empty() && clip.hFrames > 0 && clip.vFrames > 0 && !clip.sequence.empty())
+                {
+                    if (auto tex = GetOrLoadTexture(clip.texturePath))
+                    {
+                        ImGui::Separator();
+                        ImGui::Text("Frames (%zu)", clip.sequence.size());
+                        float thumb = 36.0f;
+                        int colsPerRow = (int)(ImGui::GetContentRegionAvail().x / (thumb + 4.0f));
+                        if (colsPerRow < 1)
+                            colsPerRow = 1;
+                        int col = 0;
+                        for (size_t i = 0; i < clip.sequence.size(); ++i)
+                        {
+                            int logical = clip.sequence[i];
+                            int cols = clip.hFrames;
+                            int r = logical / cols; // bottom = 0
+                            int c = logical % cols;
+                            float u0 = (float)c / (float)cols;
+                            float u1 = (float)(c + 1) / (float)cols;
+                            float v0 = (float)r / (float)clip.vFrames;
+                            float v1 = (float)(r + 1) / (float)clip.vFrames;
+                            // Show upright (not flipped)
+                            ImGui::PushID((int)i);
+                            ImGui::Image((void *)(intptr_t)tex->GetID(), ImVec2(thumb, thumb), ImVec2(u0, v0), ImVec2(u1, v1));
+                            if (ImGui::IsItemHovered())
+                            {
+                                ImGui::BeginTooltip();
+                                ImGui::Text("Seq %zu -> frame %d", i, logical);
+                                ImGui::EndTooltip();
+                            }
+                            ImGui::PopID();
+                            if (++col < colsPerRow)
+                                ImGui::SameLine();
+                            else
+                                col = 0;
+                        }
+                    }
+                }
+            }
+            ImGui::Separator();
+            ImGui::TextDisabled("Right-click hierarchy -> New Animation for quick create");
+        }
+        ImGui::End();
+        // Render sheet editor modal if active
+        EditorUI::RenderAnimationSheetEditor();
+    }
+
+    const std::vector<EditorUI::AnimationClipInfo> &EditorUI::GetAnimationClips() { return g_animationClips; }
+    int EditorUI::GetAssignedClip(Core::GameObject *go)
+    {
+        auto it = g_objectClipAssignments.find(go);
+        return it == g_objectClipAssignments.end() ? -1 : it->second;
+    }
+    void EditorUI::SetAssignedClip(Core::GameObject *go, int clipIndex)
+    {
+        if (!go)
+            return;
+        if (clipIndex < 0)
+            g_objectClipAssignments.erase(go);
+        else
+            g_objectClipAssignments[go] = clipIndex;
+    }
+
+    // Helper to draw checker background
+    static void DrawChecker(ImDrawList *dl, ImVec2 pos, ImVec2 size, float cell = 8.0f)
+    {
+        ImU32 col1 = IM_COL32(60, 60, 60, 255);
+        ImU32 col2 = IM_COL32(80, 80, 80, 255);
+        for (float y = 0; y < size.y; y += cell)
+        {
+            for (float x = 0; x < size.x; x += cell)
+            {
+                bool alt = ((int)(x / cell) + (int)(y / cell)) & 1;
+                dl->AddRectFilled(ImVec2(pos.x + x, pos.y + y), ImVec2(pos.x + x + cell, pos.y + y + cell), alt ? col1 : col2);
+            }
+        }
+    }
+
+    void EditorUI::RenderAnimationSheetEditor()
+    {
+        if (!g_openSheetEditor || g_sheetEditorClipIndex < 0 || g_sheetEditorClipIndex >= (int)g_animationClips.size())
+            return;
+        auto &clip = g_animationClips[g_sheetEditorClipIndex];
+        ImGui::SetNextWindowSize(ImVec2(900, 600), ImGuiCond_FirstUseEver);
+        if (ImGui::Begin("Animation Sheet Editor", &g_openSheetEditor, ImGuiWindowFlags_NoCollapse))
+        {
+            ImGui::Text("Editing: %s", clip.name.c_str());
+            ImGui::Separator();
+            // Left panel: texture & grid
+            ImGui::BeginChild("SheetLeft", ImVec2(ImGui::GetContentRegionAvail().x * 0.65f, 0), true);
+            if (clip.texturePath.empty())
+            {
+                ImGui::Text("Select Sprite Sheet (double-click from assets list below)");
+                RefreshAssetList();
+                ImGui::Separator();
+                ImGui::BeginChild("SheetAssetPick", ImVec2(0, 0), true);
+                for (auto &a : GetAssetFiles())
+                {
+                    if (ImGui::Selectable(a.c_str()))
+                    {
+                        clip.texturePath = a;
+                    }
+                }
+                ImGui::EndChild();
+            }
+            else
+            {
+                ImGui::TextWrapped("Sheet: %s", clip.texturePath.c_str());
+                auto tex = GetOrLoadTexture(clip.texturePath);
+                if (!tex)
+                {
+                    ImGui::TextColored(ImVec4(1, 0.3f, 0, 1), "Failed to load texture");
+                }
+                else
+                {
+                    ImGui::Separator();
+                    ImVec2 avail = ImGui::GetContentRegionAvail();
+                    float areaH = avail.y - 10.0f;
+                    if (areaH < 120)
+                        areaH = 120;
+                    ImVec2 canvasPos = ImGui::GetCursorScreenPos();
+                    ImVec2 canvasSize(avail.x, areaH);
+                    auto *dl = ImGui::GetWindowDrawList();
+                    dl->AddRectFilled(canvasPos, ImVec2(canvasPos.x + canvasSize.x, canvasPos.y + canvasSize.y), IM_COL32(30, 30, 30, 255));
+                    DrawChecker(dl, canvasPos, canvasSize, 12.0f);
+                    float texW = (float)tex->GetWidth();
+                    float texH = (float)tex->GetHeight();
+                    float scale = std::min(canvasSize.x / texW, canvasSize.y / texH);
+                    ImVec2 imgSize(texW * scale, texH * scale);
+                    ImVec2 imgPos(canvasPos.x + (canvasSize.x - imgSize.x) * 0.5f, canvasPos.y + (canvasSize.y - imgSize.y) * 0.5f);
+                    ImGui::SetCursorScreenPos(imgPos);
+                    // Flip vertically for correct orientation
+                    ImGui::Image((void *)(intptr_t)tex->GetID(), imgSize, ImVec2(0, 1), ImVec2(1, 0));
+                    int cols = clip.hFrames;
+                    int rows = clip.vFrames;
+                    if (cols > 0 && rows > 0)
+                    {
+                        float cw = imgSize.x / cols;
+                        float ch = imgSize.y / rows;
+                        // Input capture over canvas
+                        ImGui::SetCursorScreenPos(canvasPos);
+                        ImGui::InvisibleButton("SheetCanvas", canvasSize, ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight);
+                        bool hovered = ImGui::IsItemHovered();
+                        if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+                        {
+                            ImVec2 mp = ImGui::GetIO().MousePos;
+                            if (mp.x >= imgPos.x && mp.x < imgPos.x + imgSize.x && mp.y >= imgPos.y && mp.y < imgPos.y + imgSize.y)
+                            {
+                                int c = (int)((mp.x - imgPos.x) / cw);
+                                int rVis = (int)((mp.y - imgPos.y) / ch); // 0 at top visually
+                                int r = rows - 1 - rVis;                  // map to data row (bottom = 0)
+                                int idx = r * cols + c;
+                                if (std::find(g_tempSelection.begin(), g_tempSelection.end(), idx) == g_tempSelection.end())
+                                    g_tempSelection.push_back(idx);
+                            }
+                        }
+                        if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right))
+                            g_tempSelection.clear();
+                        // Grid lines
+                        ImU32 gridCol = IM_COL32(200, 200, 200, 90);
+                        for (int c = 1; c < cols; ++c)
+                            dl->AddLine(ImVec2(imgPos.x + c * cw, imgPos.y), ImVec2(imgPos.x + c * cw, imgPos.y + imgSize.y), gridCol, 1.0f);
+                        for (int rLine = 1; rLine < rows; ++rLine)
+                            dl->AddLine(ImVec2(imgPos.x, imgPos.y + rLine * ch), ImVec2(imgPos.x + imgSize.x, imgPos.y + rLine * ch), gridCol, 1.0f);
+                        // Selections overlay
+                        ImU32 selCol = IM_COL32(255, 180, 50, 120);
+                        ImU32 selBorder = IM_COL32(255, 140, 0, 255);
+                        for (size_t si = 0; si < g_tempSelection.size(); ++si)
+                        {
+                            int idx = g_tempSelection[si];
+                            if (idx < 0)
+                                continue;
+                            int r = idx / cols;
+                            int c = idx % cols;
+                            if (r >= rows || c >= cols)
+                                continue;
+                            int rVis = rows - 1 - r;
+                            ImVec2 a(imgPos.x + c * cw, imgPos.y + rVis * ch);
+                            ImVec2 b(a.x + cw, a.y + ch);
+                            dl->AddRectFilled(a, b, selCol);
+                            dl->AddRect(a, b, selBorder, 0, 0, 2.0f);
+                            char buf[16];
+                            snprintf(buf, sizeof(buf), "%d", (int)si);
+                            dl->AddText(ImVec2(a.x + 4, a.y + 4), IM_COL32(20, 20, 20, 255), buf);
+                        }
+                    }
+                    else
+                    {
+                        ImGui::TextDisabled("Set H/V Frames to show grid.");
+                    }
+                }
+            }
+            ImGui::EndChild();
+            ImGui::SameLine();
+            // Right panel controls
+            ImGui::BeginChild("SheetRight", ImVec2(0, 0), true);
+            ImGui::Text("Grid Settings");
+            int h = clip.hFrames;
+            int v = clip.vFrames;
+            if (ImGui::InputInt("H Frames", &h))
+                clip.hFrames = h > 0 ? h : 0;
+            if (ImGui::InputInt("V Frames", &v))
+                clip.vFrames = v > 0 ? v : 0;
+            if (auto tex = GetOrLoadTexture(clip.texturePath))
+            {
+                clip.cellWidth = (clip.hFrames > 0) ? tex->GetWidth() / clip.hFrames : 0;
+                clip.cellHeight = (clip.vFrames > 0) ? tex->GetHeight() / clip.vFrames : 0;
+                ImGui::Text("Cell Size: %d x %d", clip.cellWidth, clip.cellHeight);
+            }
+            ImGui::Separator();
+            if (ImGui::Button("Clear Selection"))
+                g_tempSelection.clear();
+            ImGui::SameLine();
+            if (ImGui::Button("Use Selection"))
+            {
+                clip.sequence = g_tempSelection;
+                clip.dirty = true;
+            }
+            if (ImGui::Button("Auto Sequence"))
+            {
+                clip.sequence.clear();
+                for (int i = 0; i < clip.hFrames * clip.vFrames; ++i)
+                    clip.sequence.push_back(i);
+                clip.dirty = true;
+                g_tempSelection = clip.sequence;
+            }
+            ImGui::Separator();
+            if (!clip.sequence.empty())
+            {
+                ImGui::Text("Sequence (%zu frames):", clip.sequence.size());
+                ImGui::BeginChild("SeqList", ImVec2(0, 120), true);
+                for (size_t i = 0; i < clip.sequence.size(); ++i)
+                    ImGui::Text("%zu: %d", i, clip.sequence[i]);
+                ImGui::EndChild();
+            }
+            else
+                ImGui::TextDisabled("No sequence defined.");
+            ImGui::Separator();
+            if (ImGui::Button("Close"))
+            {
+                g_openSheetEditor = false;
+                g_sheetEditorClipIndex = -1;
             }
             ImGui::EndChild();
         }

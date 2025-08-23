@@ -3,18 +3,39 @@
 #include "Core/GameObject.hpp"
 #include "Graphics/SpriteRenderer.hpp"
 #include "Core/Camera.hpp"
+#include "Core/Animator.hpp"
+#include "Editor/EditorUI.hpp"
 #include <fstream>
 #include <sstream>
 #include <iostream>
-#include <unordered_map>
+#include <filesystem>
 
 namespace Kiaak::Core
 {
-
     static void Trim(std::string &s)
     {
         while (!s.empty() && (s.back() == '\r' || s.back() == '\n' || s.back() == ' ' || s.back() == '\t'))
             s.pop_back();
+    }
+
+    static void WriteGameObject(std::ostream &out, GameObject *go)
+    {
+        out << "  GAMEOBJECT " << go->GetName() << "\n";
+        if (auto *tr = go->GetTransform())
+        {
+            auto p = tr->GetPosition();
+            auto r = tr->GetRotation();
+            auto sc = tr->GetScale();
+            out << "    TRANSFORM pos " << p.x << ' ' << p.y << ' ' << p.z
+                << " rot " << r.x << ' ' << r.y << ' ' << r.z
+                << " scale " << sc.x << ' ' << sc.y << ' ' << sc.z << "\n";
+        }
+        if (auto *sr = go->GetComponent<Graphics::SpriteRenderer>())
+            out << "    SPRITE texture " << sr->GetTexturePath() << "\n";
+        if (auto *anim = go->GetComponent<Kiaak::Core::Animator>())
+            out << "    ANIMATOR clipIndex " << anim->GetClipIndex() << "\n";
+        if (auto *cam = go->GetComponent<Camera>())
+            out << "    CAMERA orthoSize " << cam->GetOrthographicSize() << " zoom " << cam->GetZoom() << "\n";
     }
 
     bool SceneSerialization::SaveAllScenes(SceneManager *manager, const std::string &filePath)
@@ -24,7 +45,6 @@ namespace Kiaak::Core
         std::ofstream out(filePath);
         if (!out.is_open())
             return false;
-
         auto names = manager->GetSceneNames();
         for (size_t i = 0; i < names.size(); ++i)
         {
@@ -32,43 +52,18 @@ namespace Kiaak::Core
             if (!scene)
                 continue;
             out << "SCENE " << names[i] << "\n";
-
-            // Active camera (designated) first
             if (scene->GetDesignatedCamera())
             {
                 if (auto *go = scene->GetDesignatedCamera()->GetGameObject())
-                {
                     out << "  ACTIVE_CAMERA " << go->GetName() << "\n";
-                }
             }
-
-            auto objects = scene->GetAllGameObjects();
-            for (auto *go : objects)
+            for (auto *go : scene->GetAllGameObjects())
             {
                 if (!go)
                     continue;
-                // Skip any editor camera variants (prefix match)
-                const std::string &gn = go->GetName();
-                if (gn.rfind("EditorCamera", 0) == 0)
-                    continue; // skip editor camera(s)
-                out << "  GAMEOBJECT " << go->GetName() << "\n";
-                if (auto *tr = go->GetTransform())
-                {
-                    auto p = tr->GetPosition();
-                    auto r = tr->GetRotation();
-                    auto sc = tr->GetScale();
-                    out << "    TRANSFORM pos " << p.x << ' ' << p.y << ' ' << p.z
-                        << " rot " << r.x << ' ' << r.y << ' ' << r.z
-                        << " scale " << sc.x << ' ' << sc.y << ' ' << sc.z << "\n";
-                }
-                if (auto *sr = go->GetComponent<Graphics::SpriteRenderer>())
-                {
-                    out << "    SPRITE texture " << sr->GetTexturePath() << "\n";
-                }
-                if (auto *cam = go->GetComponent<Camera>())
-                {
-                    out << "    CAMERA orthoSize " << cam->GetOrthographicSize() << " zoom " << cam->GetZoom() << "\n";
-                }
+                if (go->GetName().rfind("EditorCamera", 0) == 0)
+                    continue;
+                WriteGameObject(out, go);
             }
             if (i + 1 < names.size())
                 out << "\n";
@@ -83,9 +78,7 @@ namespace Kiaak::Core
         std::ifstream in(filePath);
         if (!in.is_open())
             return false;
-
         std::vector<std::pair<Scene *, std::string>> pendingActive;
-
         std::string line;
         Scene *currentScene = nullptr;
         while (std::getline(in, line))
@@ -106,10 +99,7 @@ namespace Kiaak::Core
                 manager->SwitchToScene(sceneName);
                 currentScene = manager->GetCurrentScene();
                 if (currentScene && existed)
-                {
-                    // Clear existing game objects before reloading to prevent duplication
                     currentScene->ClearAllGameObjects();
-                }
             }
             else if (token == "ACTIVE_CAMERA" && currentScene)
             {
@@ -122,7 +112,7 @@ namespace Kiaak::Core
                 std::string goName;
                 iss >> goName;
                 if (goName.rfind("EditorCamera", 0) == 0)
-                    continue; // skip editor-only object(s) from saved file
+                    continue;
                 currentScene->CreateGameObject(goName);
             }
             else if (token == "TRANSFORM" && currentScene)
@@ -132,14 +122,14 @@ namespace Kiaak::Core
                     continue;
                 auto *go = objs.back();
                 glm::vec3 pos{}, rot{}, scale{1.0f};
-                std::string label;
-                while (iss >> label)
+                std::string lbl;
+                while (iss >> lbl)
                 {
-                    if (label == "pos")
+                    if (lbl == "pos")
                         iss >> pos.x >> pos.y >> pos.z;
-                    else if (label == "rot")
+                    else if (lbl == "rot")
                         iss >> rot.x >> rot.y >> rot.z;
-                    else if (label == "scale")
+                    else if (lbl == "scale")
                         iss >> scale.x >> scale.y >> scale.z;
                 }
                 if (auto *tr = go->GetTransform())
@@ -168,20 +158,41 @@ namespace Kiaak::Core
                         sr->SetTexture(path);
                 }
             }
+            else if (token == "ANIMATOR" && currentScene)
+            {
+                auto objs = currentScene->GetAllGameObjects();
+                if (objs.empty())
+                    continue;
+                auto *go = objs.back();
+                std::string sub; // expect clipIndex
+                iss >> sub;
+                int idx = -1;
+                iss >> idx;
+                if (idx >= 0)
+                {
+                    auto *anim = go->GetComponent<Kiaak::Core::Animator>();
+                    if (!anim)
+                        anim = go->AddComponent<Kiaak::Core::Animator>();
+                    if (anim)
+                    {
+                        anim->SetClipIndex(idx);
+                        Kiaak::EditorUI::SetAssignedClip(go, idx);
+                    }
+                }
+            }
             else if (token == "CAMERA" && currentScene)
             {
                 auto objs = currentScene->GetAllGameObjects();
                 if (objs.empty())
                     continue;
                 auto *go = objs.back();
-                float orthoSize = 10.0f;
-                float zoom = 1.0f;
-                std::string label;
-                while (iss >> label)
+                float ortho = 10.0f, zoom = 1.0f;
+                std::string lbl;
+                while (iss >> lbl)
                 {
-                    if (label == "orthoSize")
-                        iss >> orthoSize;
-                    else if (label == "zoom")
+                    if (lbl == "orthoSize")
+                        iss >> ortho;
+                    else if (lbl == "zoom")
                         iss >> zoom;
                 }
                 auto *cam = go->GetComponent<Camera>();
@@ -189,39 +200,33 @@ namespace Kiaak::Core
                     cam = go->AddComponent<Camera>();
                 if (cam)
                 {
-                    cam->SetOrthographicSize(orthoSize);
+                    cam->SetOrthographicSize(ortho);
                     cam->SetZoom(zoom);
                 }
             }
         }
-
-        // Resolve pending active cameras
-        for (auto &[scene, goName] : pendingActive)
+        for (auto &[sc, goName] : pendingActive)
         {
-            if (!scene)
+            if (!sc)
                 continue;
-            auto *go = scene->GetGameObject(goName);
+            auto *go = sc->GetGameObject(goName);
             if (!go)
                 continue;
             if (auto *cam = go->GetComponent<Camera>())
-                scene->SetDesignatedCamera(cam);
+                sc->SetDesignatedCamera(cam);
         }
-        // After load, immediately rewrite file to purge any previously serialized editor-only objects
+        // Clean rewrite
         SaveAllScenes(manager, filePath);
         return true;
     }
 
-    // --- New per-scene file format helpers (reuse same text structure but single scene per file) ---
     bool SceneSerialization::SaveSceneToFile(Scene *scene, const std::string &filePath)
     {
         if (!scene)
             return false;
-        // We need a scene name; since Scene itself doesn't store name, caller passes path encoded with it.
-        // We'll infer name from filename (strip extension) when loading.
         std::ofstream out(filePath);
         if (!out.is_open())
             return false;
-        // Derive scene name
         std::string sceneName;
         {
             std::filesystem::path p(filePath);
@@ -233,34 +238,20 @@ namespace Kiaak::Core
             if (auto *go = scene->GetDesignatedCamera()->GetGameObject())
                 out << "  ACTIVE_CAMERA " << go->GetName() << "\n";
         }
-        auto objects = scene->GetAllGameObjects();
-        for (auto *go : objects)
+        for (auto *go : scene->GetAllGameObjects())
         {
             if (!go)
                 continue;
-            const std::string &gn = go->GetName();
-            if (gn.rfind("EditorCamera", 0) == 0)
+            if (go->GetName().rfind("EditorCamera", 0) == 0)
                 continue;
-            out << "  GAMEOBJECT " << go->GetName() << "\n";
-            if (auto *tr = go->GetTransform())
-            {
-                auto p = tr->GetPosition();
-                auto r = tr->GetRotation();
-                auto sc = tr->GetScale();
-                out << "    TRANSFORM pos " << p.x << ' ' << p.y << ' ' << p.z
-                    << " rot " << r.x << ' ' << r.y << ' ' << r.z
-                    << " scale " << sc.x << ' ' << sc.y << ' ' << sc.z << "\n";
-            }
-            if (auto *sr = go->GetComponent<Graphics::SpriteRenderer>())
-                out << "    SPRITE texture " << sr->GetTexturePath() << "\n";
-            if (auto *cam = go->GetComponent<Camera>())
-                out << "    CAMERA orthoSize " << cam->GetOrthographicSize() << " zoom " << cam->GetZoom() << "\n";
+            WriteGameObject(out, go);
         }
         return true;
     }
 
     bool SceneSerialization::LoadSceneFromFile(SceneManager *manager, const std::string &filePath)
     {
+        // Delegate to LoadAllScenes conceptually if format is the same, but implement minimally here
         if (!manager)
             return false;
         std::ifstream in(filePath);
@@ -307,14 +298,14 @@ namespace Kiaak::Core
                     continue;
                 auto *go = objs.back();
                 glm::vec3 pos{}, rot{}, scale{1.0f};
-                std::string label;
-                while (iss >> label)
+                std::string lbl;
+                while (iss >> lbl)
                 {
-                    if (label == "pos")
+                    if (lbl == "pos")
                         iss >> pos.x >> pos.y >> pos.z;
-                    else if (label == "rot")
+                    else if (lbl == "rot")
                         iss >> rot.x >> rot.y >> rot.z;
-                    else if (label == "scale")
+                    else if (lbl == "scale")
                         iss >> scale.x >> scale.y >> scale.z;
                 }
                 if (auto *tr = go->GetTransform())
@@ -343,6 +334,28 @@ namespace Kiaak::Core
                         sr->SetTexture(path);
                 }
             }
+            else if (token == "ANIMATOR" && currentScene)
+            {
+                auto objs = currentScene->GetAllGameObjects();
+                if (objs.empty())
+                    continue;
+                auto *go = objs.back();
+                std::string sub;
+                iss >> sub;
+                int idx = -1;
+                iss >> idx;
+                if (idx >= 0)
+                {
+                    auto *anim = go->GetComponent<Kiaak::Core::Animator>();
+                    if (!anim)
+                        anim = go->AddComponent<Kiaak::Core::Animator>();
+                    if (anim)
+                    {
+                        anim->SetClipIndex(idx);
+                        Kiaak::EditorUI::SetAssignedClip(go, idx);
+                    }
+                }
+            }
             else if (token == "CAMERA" && currentScene)
             {
                 auto objs = currentScene->GetAllGameObjects();
@@ -350,12 +363,12 @@ namespace Kiaak::Core
                     continue;
                 auto *go = objs.back();
                 float ortho = 10.0f, zoom = 1.0f;
-                std::string label;
-                while (iss >> label)
+                std::string lbl;
+                while (iss >> lbl)
                 {
-                    if (label == "orthoSize")
+                    if (lbl == "orthoSize")
                         iss >> ortho;
-                    else if (label == "zoom")
+                    else if (lbl == "zoom")
                         iss >> zoom;
                 }
                 auto *cam = go->GetComponent<Camera>();
@@ -380,5 +393,4 @@ namespace Kiaak::Core
         }
         return true;
     }
-
 } // namespace Kiaak::Core

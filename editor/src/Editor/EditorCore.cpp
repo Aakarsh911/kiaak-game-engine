@@ -45,6 +45,10 @@ namespace Kiaak
             }
             EditorUI::RenderInspector(m_sceneManager, m_selectedObject);
             EditorUI::RenderAssetBrowser();
+            EditorUI::RenderAnimatorPanel();
+            // Modal / separate windows after main panels
+            // (Will early-return if not active)
+            // Access private via friend not defined; use static function in class (public? currently private, so move call? We'll expose by adding public call.)
         }
     }
 

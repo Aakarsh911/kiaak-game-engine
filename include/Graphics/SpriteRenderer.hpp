@@ -44,8 +44,9 @@ namespace Kiaak
             void SetSize(float width, float height) { m_size = glm::vec2(width, height); }
             const glm::vec2 &GetSize() const { return m_size; }
 
-            // UV coordinates for sprite sheets (future feature)
-            void SetUVRect(const glm::vec4 &uvRect) { m_uvRect = uvRect; }
+            // UV coordinates sub-rectangle (u0,v0,u1,v1) within the texture
+            // Updates the underlying quad's UVs so no special shader logic is required.
+            void SetUVRect(const glm::vec4 &uvRect);
             const glm::vec4 &GetUVRect() const { return m_uvRect; }
 
             // Rendering
@@ -75,6 +76,7 @@ namespace Kiaak
 
             // Internal methods
             void CreateQuad();
+            void UpdateQuadUVs(); // rebuilds quad UVs from m_uvRect (no special shader needed)
             void UpdateQuadSize();
             void InitializeShader();
             void CleanupShader();

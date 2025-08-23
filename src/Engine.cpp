@@ -1,6 +1,7 @@
 #include "Engine.hpp"
 #include "Graphics/SpriteRenderer.hpp"
 #include "Core/Camera.hpp"
+#include "Core/Animator.hpp"
 #include "Editor/EditorCore.hpp"
 #include "Editor/EditorUI.hpp"
 #include "Core/SceneSerialization.hpp"
@@ -396,6 +397,31 @@ namespace Kiaak
         else
         {
             SwitchToPlayMode();
+            // Apply any pending animation assignments now that scene objects exist in play mode
+            if (sceneManager && sceneManager->GetCurrentScene())
+            {
+                Kiaak::EditorUI::ApplyPendingAnimationAssignments(sceneManager->GetCurrentScene());
+                // Also ensure current in-memory assignments get animators
+                auto *scene = sceneManager->GetCurrentScene();
+                if (scene)
+                {
+                    auto objects = scene->GetAllGameObjects();
+                    for (auto *go : objects)
+                    {
+                        if (!go)
+                            continue;
+                        int clipIdx = Kiaak::EditorUI::GetAssignedClip(go);
+                        if (clipIdx >= 0)
+                        {
+                            auto *anim = go->GetComponent<Kiaak::Core::Animator>();
+                            if (!anim)
+                                anim = go->AddComponent<Kiaak::Core::Animator>();
+                            if (anim)
+                                anim->SetClipIndex(clipIdx);
+                        }
+                    }
+                }
+            }
         }
     }
 

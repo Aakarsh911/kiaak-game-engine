@@ -70,6 +70,14 @@ namespace Kiaak
             }
         }
 
+        void SpriteRenderer::SetUVRect(const glm::vec4 &uvRect)
+        {
+            if (m_uvRect == uvRect)
+                return;
+            m_uvRect = uvRect;
+            UpdateQuadUVs();
+        }
+
         void SpriteRenderer::Start()
         {
             InitializeShader();
@@ -152,6 +160,28 @@ namespace Kiaak
             glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void *)(2 * sizeof(float)));
 
             m_vertexArray->Unbind();
+        }
+
+        void SpriteRenderer::UpdateQuadUVs()
+        {
+            if (!m_vertexBuffer)
+                return;
+            // Recreate vertex data with updated UV rectangle (u0,v0,u1,v1)
+            float u0 = m_uvRect.x;
+            float v0 = m_uvRect.y;
+            float u1 = m_uvRect.z;
+            float v1 = m_uvRect.w;
+            const float vertices[] = {
+                // pos       // uv
+                -0.5f, -0.5f, u0, v0,
+                0.5f, -0.5f, u1, v0,
+                0.5f, 0.5f, u1, v1,
+
+                -0.5f, -0.5f, u0, v0,
+                0.5f, 0.5f, u1, v1,
+                -0.5f, 0.5f, u0, v1};
+            m_vertexBuffer->Bind();
+            m_vertexBuffer->SetData(vertices, sizeof(vertices));
         }
 
         void SpriteRenderer::InitializeShader()
