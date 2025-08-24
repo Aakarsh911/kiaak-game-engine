@@ -83,9 +83,14 @@ namespace Kiaak
         glm::vec2 gizmoDragStartWorld{0.0f};
         glm::vec3 gizmoOriginalPos{0.0f};
 
-    // Snapshot of transforms before entering play mode (for restore on return to editor)
-    struct TransformSnapshot { glm::vec3 pos; glm::vec3 rot; glm::vec3 scale; };
-    std::unordered_map<uint32_t, TransformSnapshot> prePlayTransforms;
+        // Snapshot of transforms before entering play mode (for restore on return to editor)
+        struct TransformSnapshot
+        {
+            glm::vec3 pos;
+            glm::vec3 rot;
+            glm::vec3 scale;
+        };
+        std::unordered_map<uint32_t, TransformSnapshot> prePlayTransforms;
 
         // Game loop functions
         void ProcessInput();
@@ -107,6 +112,8 @@ namespace Kiaak
         glm::vec2 ScreenToWorld(double mouseX, double mouseY, Core::Camera *cam) const;
         void HandleSpriteClickDetection();
         void RenderSelectionGizmo();
+        void PaintSelectedTilemap();
+        void RenderTilemapGrid();
 
         // Singleton instance pointer
         static Engine *s_instance;

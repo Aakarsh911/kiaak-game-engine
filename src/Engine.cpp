@@ -5,6 +5,7 @@
 #include "Core/Animator.hpp"
 #include "Core/Rigidbody2D.hpp"
 #include "Core/Collider2D.hpp"
+#include "Core/Tilemap.hpp"
 #include "Editor/EditorCore.hpp"
 #include "Editor/EditorUI.hpp"
 #include "Core/SceneSerialization.hpp"
@@ -152,6 +153,8 @@ namespace Kiaak
         }
 
         HandleSpriteClickDetection();
+        // World-space tilemap painting (selected tilemap)
+        PaintSelectedTilemap();
 
         Input::ResetScrollValues();
     }
@@ -174,6 +177,12 @@ namespace Kiaak
         if (auto *sc = GetCurrentScene())
         {
             sc->Render(editorMode); // include disabled components when in editor mode
+        }
+
+        // Draw tilemap grid overlay (editor only)
+        if (editorMode)
+        {
+            RenderTilemapGrid();
         }
 
         // Draw collider outlines in editor mode
@@ -302,6 +311,19 @@ namespace Kiaak
                 }
                 if (selectedGameObject != editorSel)
                 {
+                    // If we are changing selection away from a tilemap, or deselecting entirely, clear paint mode
+                    if (selectedGameObject)
+                    {
+                        if (selectedGameObject->GetComponent<Core::Tilemap>())
+                        {
+                            Kiaak::EditorUI::SetTilemapPaintMode(false);
+                        }
+                    }
+                    else
+                    {
+                        // Deselection also clears paint mode (safety)
+                        Kiaak::EditorUI::SetTilemapPaintMode(false);
+                    }
                     selectedGameObject = editorSel;
                 }
             }
@@ -669,11 +691,11 @@ namespace Kiaak
         if (!currentScene)
             return;
 
-        // Collect clicked items (sprites & cameras)
+        // Collect clicked items (sprites, cameras, tilemaps)
         struct ClickedItem
         {
             Core::GameObject *gameObject;
-            Graphics::SpriteRenderer *spriteRenderer; // nullptr for cameras
+            Graphics::SpriteRenderer *spriteRenderer; // nullptr for cameras / tilemaps
             float zValue;
             glm::vec4 bounds; // minX, minY, maxX, maxY
         };
@@ -711,6 +733,9 @@ namespace Kiaak
                     continue; // found sprite hit, prefer it over camera on same object
                 }
             }
+
+            // Tilemap selection intentionally disabled in scene: can only select via inspector now.
+            // (Previously: tilemap bounds hit-test would add to clickedSprites.)
 
             // Next consider camera components (skip editor camera)
             if (gameObject->GetName() == "EditorCamera")
@@ -764,6 +789,33 @@ namespace Kiaak
         }
         else
         {
+            // Preserve existing tilemap selection if click fell within its bounds (tilemaps aren't pick-tested)
+            if (selectedGameObject)
+            {
+                if (auto *tilemap = selectedGameObject->GetComponent<Core::Tilemap>())
+                {
+                    if (auto *tr = selectedGameObject->GetTransform())
+                    {
+                        glm::vec3 tp = tr->GetPosition();
+                        float tw = tilemap->GetTileWidth();
+                        float th = tilemap->GetTileHeight();
+                        float w = tilemap->GetWidth() * tw;
+                        float h = tilemap->GetHeight() * th;
+                        float minX = tp.x;
+                        float minY = tp.y;
+                        float maxX = tp.x + w;
+                        float maxY = tp.y + h;
+                        bool insideTilemap = (worldPos.x >= minX && worldPos.x <= maxX && worldPos.y >= minY && worldPos.y <= maxY);
+                        if (insideTilemap)
+                        {
+                            // Keep selection (allow painting). Do not deselect.
+                            // Optionally early return.
+                            // std::cout << "Tilemap click inside bounds - preserving selection" << std::endl;
+                            return;
+                        }
+                    }
+                }
+            }
             selectedGameObject = nullptr;
             if (editorCore)
             {
@@ -771,6 +823,113 @@ namespace Kiaak
             }
         }
     }
+
+    // After existing gizmo drawing call in RenderSelectionGizmo or at end of Render(), we add tilemap painting logic.
+    // Simpler: append here bottom helper (function-scope static not needed). We'll inject before end of namespace below.
+
+    void Engine::PaintSelectedTilemap()
+    {
+        if (!IsEditorMode())
+            return;
+        if (!selectedGameObject)
+            return;
+        auto *tilemap = selectedGameObject->GetComponent<Core::Tilemap>();
+        if (!tilemap)
+            return;
+        if (!Kiaak::EditorUI::IsTilemapPaintMode())
+            return;
+        if (Kiaak::EditorUI::IsTilemapColliderMode())
+            return; // collider mode suppresses painting
+        ImGuiIO &io = ImGui::GetIO();
+        if (io.WantCaptureMouse)
+            return; // don't paint when over UI
+        auto *cam = Core::Camera::GetActive();
+        if (!cam)
+            return;
+        double mx, my;
+        Input::GetMousePosition(mx, my);
+        glm::vec2 world = ScreenToWorld(mx, my, cam);
+        auto *tr = selectedGameObject->GetTransform();
+        if (!tr)
+            return;
+        glm::vec3 basePos = tr->GetPosition();
+        float relX = world.x - basePos.x;
+        float relY = world.y - basePos.y;
+        if (relX < 0 || relY < 0)
+            return;
+        int tx = (int)floor(relX / tilemap->GetTileWidth());
+        int ty = (int)floor(relY / tilemap->GetTileHeight());
+        if (tx < 0 || ty < 0 || tx >= tilemap->GetWidth() || ty >= tilemap->GetHeight())
+            return;
+        bool lHeld = Input::IsMouseButtonHeld(MouseButton::Left);
+        bool rHeld = Input::IsMouseButtonHeld(MouseButton::Right);
+        if (!lHeld && !rHeld)
+            return;
+        int brush = Kiaak::EditorUI::GetActiveTilemapPaintIndex();
+        if (rHeld || io.KeyShift)
+        {
+            int before = tilemap->GetTile(tx, ty);
+            if (before != -1)
+            {
+                tilemap->SetTile(tx, ty, -1);
+                tilemap->RebuildColliders();
+            }
+        }
+        else if (lHeld)
+        {
+            int before = tilemap->GetTile(tx, ty);
+            if (before != brush)
+            {
+                tilemap->SetTile(tx, ty, brush);
+                tilemap->RebuildColliders();
+            }
+        }
+    }
+
+    void Engine::RenderTilemapGrid()
+    {
+        if (!renderer)
+            return;
+        if (!selectedGameObject)
+            return;
+        auto *tilemap = selectedGameObject->GetComponent<Core::Tilemap>();
+        if (!tilemap)
+            return;
+        auto *tr = selectedGameObject->GetTransform();
+        if (!tr)
+            return;
+        glm::vec3 base = tr->GetPosition();
+        int w = tilemap->GetWidth();
+        int h = tilemap->GetHeight();
+        float tw = tilemap->GetTileWidth();
+        float th = tilemap->GetTileHeight();
+        float totalW = w * tw;
+        float totalH = h * th;
+        float z = base.z + 0.01f;
+        // Pick thickness ~1px
+        float thickness = 0.005f;
+        if (auto *cam = Core::Camera::GetActive(); cam && window)
+        {
+            float visibleH = 2.0f * cam->GetOrthographicSize() / std::max(cam->GetZoom(), 0.0001f);
+            float perPixel = visibleH / (float)window->GetHeight();
+            thickness = std::max(perPixel, perPixel * 0.5f);
+        }
+        glm::vec4 lineColor(1.0f, 1.0f, 1.0f, 0.15f);
+        // Vertical lines
+        for (int x = 0; x <= w; ++x)
+        {
+            float lx = base.x + x * tw;
+            renderer->DrawQuad(glm::vec3(lx, base.y + totalH * 0.5f, z), glm::vec2(thickness, totalH), lineColor);
+        }
+        // Horizontal lines
+        for (int y = 0; y <= h; ++y)
+        {
+            float ly = base.y + y * th;
+            renderer->DrawQuad(glm::vec3(base.x + totalW * 0.5f, ly, z), glm::vec2(totalW, thickness), lineColor);
+        }
+    }
+
+    // Hook painting into Engine::Update after selection handling. We'll call from Update end.
 
     void Engine::RenderSelectionGizmo()
     {

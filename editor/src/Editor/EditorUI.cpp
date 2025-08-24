@@ -16,6 +16,7 @@
 #include "Core/Animator.hpp"
 #include "Core/Rigidbody2D.hpp"
 #include "Core/Collider2D.hpp"
+#include "Core/Tilemap.hpp"
 #include <functional>
 #include <filesystem>
 #include <vector>
@@ -41,6 +42,11 @@ namespace Kiaak
     static const char *kAnimationClipsFile = "animation_clips.json";                 // saved in working dir
     static const char *kAnimationAssignmentsFile = "animation_assignments.json";     // mapping objectID->clip index
     static std::unordered_map<uint32_t, int> g_pendingAssignments;                   // loaded IDs awaiting scene objects
+    // Tilemap painting state
+    static int g_tilemapPaintIndex = 0;
+    static bool g_tilemapBrushErase = false;
+    static bool g_tilemapPaintMode = false; // must be toggled in inspector
+    static bool g_tilemapColliderMode = false; // mutually exclusive with paint mode
     // Editor config persistence (e.g., texture filter mode)
     static const char *kEditorConfigFile = "editor_config.json"; // stored in project root if a project is open, else cwd
     static int g_savedFilterMode = -1;                           // track last saved to avoid redundant writes
@@ -321,15 +327,43 @@ namespace Kiaak
     {
         if (path.empty())
             return nullptr;
-        auto it = g_textureCache.find(path);
+        // Resolve relative paths against project assets folder
+        std::string resolved = path;
+        if (!std::filesystem::exists(resolved))
+        {
+            if (Core::Project::HasPath())
+            {
+                auto tryPath = Core::Project::GetAssetsPath() + "/" + path;
+                if (std::filesystem::exists(tryPath))
+                    resolved = tryPath;
+            }
+            else
+            {
+                std::string tryPath = std::string("assets/") + path;
+                if (std::filesystem::exists(tryPath))
+                    resolved = tryPath;
+            }
+        }
+        auto cacheKey = resolved;
+        auto it = g_textureCache.find(cacheKey);
         if (it != g_textureCache.end())
             return it->second;
-        auto tex = std::make_shared<Texture>(path);
+        auto tex = std::make_shared<Texture>(resolved);
         if (!tex->IsValid())
             return nullptr;
-        g_textureCache[path] = tex;
+        g_textureCache[cacheKey] = tex;
         return tex;
     }
+    int EditorUI::GetActiveTilemapPaintIndex() { return g_tilemapPaintIndex; }
+    void EditorUI::SetActiveTilemapPaintIndex(int index)
+    {
+        if (index >= 0)
+            g_tilemapPaintIndex = index;
+    }
+    bool EditorUI::IsTilemapPaintMode() { return g_tilemapPaintMode; }
+    void EditorUI::SetTilemapPaintMode(bool v) { g_tilemapPaintMode = v; }
+    bool EditorUI::IsTilemapColliderMode() { return g_tilemapColliderMode; }
+    void EditorUI::SetTilemapColliderMode(bool v) { g_tilemapColliderMode = v; }
     static double g_lastAssetRefreshCheck = 0.0; // seconds since start
     static const char *kAssetDir = "assets";     // fallback when no project
 
@@ -715,6 +749,27 @@ namespace Kiaak
                             }
                         }
                     }
+                    if (ImGui::MenuItem("Create Tilemap"))
+                    {
+                        if (activeScene)
+                        {
+                            auto *go = activeScene->CreateGameObject("Tilemap");
+                            auto *tm = go->AddComponent<Core::Tilemap>();
+                            if (tm)
+                            {
+                                tm->SetMapSize(8, 8);
+                                tm->SetTileSize(1.0f, 1.0f);
+                                tm->SetTileset("", 1, 1); // empty path; user sets later
+                            }
+                            selectedObject = go;
+                            if (Core::Project::HasPath())
+                            {
+                                auto sn = sceneManager->GetSceneName(activeScene);
+                                if (!sn.empty())
+                                    Core::SceneSerialization::SaveSceneToFile(activeScene, Core::Project::GetScenesPath() + "/" + sn + ".scene");
+                            }
+                        }
+                    }
                     if (ImGui::BeginMenu("Create Sprite"))
                     {
                         RefreshAssetList();
@@ -857,6 +912,7 @@ namespace Kiaak
                                 bool hasSprite = node->GetComponent<Graphics::SpriteRenderer>() != nullptr;
                                 bool hasRB = node->GetComponent<Core::Rigidbody2D>() != nullptr;
                                 bool hasBox = node->GetComponent<Core::BoxCollider2D>() != nullptr;
+                                bool hasTilemap = node->GetComponent<Core::Tilemap>() != nullptr;
                                 if (ImGui::MenuItem("Add Rigidbody 2D", nullptr, false, hasSprite && !hasRB))
                                 {
                                     auto *rb = node->AddComponent<Core::Rigidbody2D>();
@@ -905,6 +961,34 @@ namespace Kiaak
                                         }
                                     }
                                 add_box_saved:;
+                                }
+                                if (ImGui::MenuItem("Add Tilemap", nullptr, false, !hasTilemap))
+                                {
+                                    auto *tm = node->AddComponent<Core::Tilemap>();
+                                    if (tm)
+                                    {
+                                        tm->SetMapSize(8, 8);
+                                        tm->SetTileSize(1.0f, 1.0f);
+                                        tm->SetTileset("", 1, 1);
+                                    }
+                                    if (sceneManager && Core::Project::HasPath())
+                                    {
+                                        for (auto &nm : sceneManager->GetSceneNames())
+                                        {
+                                            auto *sc = sceneManager->GetScene(nm);
+                                            if (!sc)
+                                                continue;
+                                            for (auto *go : sc->GetAllGameObjects())
+                                            {
+                                                if (go == node)
+                                                {
+                                                    Core::SceneSerialization::SaveSceneToFile(sc, Core::Project::GetScenesPath() + "/" + nm + ".scene");
+                                                    goto add_tilemap_saved;
+                                                }
+                                            }
+                                        }
+                                    }
+                                add_tilemap_saved:;
                                 }
                                 if (ImGui::MenuItem("Delete"))
                                 {
@@ -1314,6 +1398,173 @@ namespace Kiaak
                         }
                     }
                     ImGui::TextDisabled("Auto-sized from sprite if zero at Start");
+                }
+                if (auto *tilemap = selectedObject->GetComponent<Core::Tilemap>())
+                {
+                    ImGui::Separator();
+                    ImGui::Text("Tilemap");
+                    int w = tilemap->GetWidth();
+                    int h = tilemap->GetHeight();
+                    float tw = tilemap->GetTileWidth();
+                    float th = tilemap->GetTileHeight();
+                    int hf = tilemap->GetHFrames();
+                    int vf = tilemap->GetVFrames();
+                    char texBuf[512];
+                    auto texPath = tilemap->GetTexturePath();
+                    strncpy(texBuf, texPath.c_str(), sizeof(texBuf));
+                    texBuf[sizeof(texBuf) - 1] = '\0';
+                    if (ImGui::InputInt("Map Width", &w) && w > 0)
+                        tilemap->SetMapSize(w, tilemap->GetHeight());
+                    if (ImGui::InputInt("Map Height", &h) && h > 0)
+                        tilemap->SetMapSize(tilemap->GetWidth(), h);
+                    if (ImGui::InputFloat("Tile Width", &tw) && tw > 0)
+                        tilemap->SetTileSize(tw, tilemap->GetTileHeight());
+                    if (ImGui::InputFloat("Tile Height", &th) && th > 0)
+                        tilemap->SetTileSize(tilemap->GetTileWidth(), th);
+                    bool framesChanged = false;
+                    if (ImGui::InputInt("H Frames", &hf))
+                        framesChanged = true;
+                    if (ImGui::InputInt("V Frames", &vf))
+                        framesChanged = true;
+                    if (framesChanged)
+                    {
+                        if (hf < 1)
+                            hf = 1;
+                        if (vf < 1)
+                            vf = 1;
+                        tilemap->SetTileset(tilemap->GetTexturePath(), hf, vf);
+                    }
+                    if (ImGui::InputText("Texture", texBuf, IM_ARRAYSIZE(texBuf)))
+                    {
+                        std::string np = texBuf;
+                        if (!np.empty())
+                            tilemap->SetTileset(np, tilemap->GetHFrames(), tilemap->GetVFrames());
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::Button("Assets"))
+                    {
+                        RefreshAssetList(true);
+                        ImGui::OpenPopup("TilemapTexturePicker");
+                    }
+                    if (ImGui::BeginPopup("TilemapTexturePicker"))
+                    {
+                        ImGui::TextDisabled("Select Texture");
+                        ImGui::Separator();
+                        const auto &assets = GetAssetFiles();
+                        static ImGuiTextFilter texFilter;
+                        texFilter.Draw("Filter", 180);
+                        ImGui::BeginChild("texpick_scroll", ImVec2(260, 200), true);
+                        for (auto &p : assets)
+                        {
+                            if (!texFilter.PassFilter(p.c_str()))
+                                continue;
+                            std::filesystem::path fp(p);
+                            std::string fname = fp.filename().string();
+                            if (ImGui::Selectable(fname.c_str()))
+                            {
+                                std::string rel = p;
+                                // If project path active, shorten to relative under assets
+                                if (Core::Project::HasPath())
+                                {
+                                    auto root = Core::Project::GetAssetsPath();
+                                    if (p.rfind(root, 0) == 0)
+                                        rel = p.substr(root.size() + 1);
+                                }
+                                tilemap->SetTileset(rel, tilemap->GetHFrames(), tilemap->GetVFrames());
+                                strncpy(texBuf, rel.c_str(), sizeof(texBuf));
+                                texBuf[sizeof(texBuf) - 1] = '\0';
+                                ImGui::CloseCurrentPopup();
+                                // Save scene after change
+                                if (Core::Project::HasPath())
+                                {
+                                    auto *owningScene = selectedObject->GetScene();
+                                    if (owningScene)
+                                    {
+                                        auto nm = sceneManager->GetSceneName(owningScene);
+                                        if (!nm.empty())
+                                            Core::SceneSerialization::SaveSceneToFile(owningScene, Core::Project::GetScenesPath() + "/" + nm + ".scene");
+                                    }
+                                }
+                            }
+                            if (ImGui::IsItemHovered())
+                                ImGui::SetTooltip("%s", p.c_str());
+                        }
+                        ImGui::EndChild();
+                        ImGui::EndPopup();
+                    }
+                    ImGui::Separator();
+                    ImGui::Text("Palette");
+                    int frameCount = tilemap->GetHFrames() * tilemap->GetVFrames();
+                    int cols = tilemap->GetHFrames();
+                    float thumb = 32.0f;
+                    if (auto tex = GetOrLoadTexture(tilemap->GetTexturePath()))
+                    {
+                        auto &flags = tilemap->GetColliderFlags();
+                        for (int i = 0; i < frameCount; ++i)
+                        {
+                            int fx = i % tilemap->GetHFrames();
+                            int fy = i / tilemap->GetHFrames();
+                            float u0 = (float)fx / (float)tilemap->GetHFrames();
+                            float v0 = (float)fy / (float)tilemap->GetVFrames();
+                            float u1 = (float)(fx + 1) / (float)tilemap->GetHFrames();
+                            float v1 = (float)(fy + 1) / (float)tilemap->GetVFrames();
+                            if (i % cols != 0)
+                                ImGui::SameLine();
+                            ImGui::PushID(i);
+                            ImGui::Image((void *)(intptr_t)tex->GetID(), ImVec2(thumb, thumb), ImVec2(u0, v0), ImVec2(u1, v1));
+                            bool left = ImGui::IsItemClicked(ImGuiMouseButton_Left);
+                            bool right = ImGui::IsItemClicked(ImGuiMouseButton_Right);
+                            if (left)
+                            {
+                                if (g_tilemapColliderMode)
+                                {
+                                    if (i >= 0 && i < (int)flags.size())
+                                    {
+                                        flags[i] = flags[i] ? 0 : 1;
+                                        tilemap->RebuildColliders();
+                                    }
+                                }
+                                else if (g_tilemapPaintMode)
+                                {
+                                    g_tilemapPaintIndex = i;
+                                    g_tilemapBrushErase = false;
+                                }
+                            }
+                            if (right && g_tilemapPaintMode)
+                            {
+                                g_tilemapPaintIndex = i;
+                                g_tilemapBrushErase = true;
+                            }
+                            auto *dl = ImGui::GetWindowDrawList();
+                            ImVec2 p0 = ImGui::GetItemRectMin();
+                            ImVec2 p1 = ImGui::GetItemRectMax();
+                            if (g_tilemapPaintMode && g_tilemapPaintIndex == i)
+                                dl->AddRect(p0, p1, IM_COL32(255, 255, 0, 255), 0, 0, 2.0f);
+                            if (i >= 0 && i < (int)flags.size() && flags[i])
+                                dl->AddRect(p0, p1, IM_COL32(255, 0, 0, 255), 0, 0, 2.0f);
+                            ImGui::PopID();
+                        }
+                    }
+                    else
+                    {
+                        ImGui::TextDisabled("No texture loaded");
+                    }
+                    ImGui::Separator();
+                    if (ImGui::Checkbox("Paint Mode", &g_tilemapPaintMode))
+                    {
+                        if (g_tilemapPaintMode) g_tilemapColliderMode = false;
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::Checkbox("Collider Mode", &g_tilemapColliderMode))
+                    {
+                        if (g_tilemapColliderMode) g_tilemapPaintMode = false;
+                    }
+                    if (g_tilemapPaintMode)
+                        ImGui::TextDisabled("Palette: LMB select, RMB erase brush");
+                    else if (g_tilemapColliderMode)
+                        ImGui::TextDisabled("Palette: LMB toggle collider (red = collidable)");
+                    else
+                        ImGui::TextDisabled("Enable a mode to edit");
                 }
             }
             else

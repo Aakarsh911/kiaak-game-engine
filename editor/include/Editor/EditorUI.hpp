@@ -28,6 +28,13 @@ namespace Kiaak
         static void RenderAssetBrowser();
         static void RenderAnimatorPanel(); // bottom row panel next to assets (summary list of clips & editor window trigger)
         static void ApplyPendingAnimationAssignments(Core::Scene *scene);
+        // Tilemap painting selection access
+        static int GetActiveTilemapPaintIndex();
+        static void SetActiveTilemapPaintIndex(int index);
+        static bool IsTilemapPaintMode();
+        static void SetTilemapPaintMode(bool v);
+    static bool IsTilemapColliderMode();
+    static void SetTilemapColliderMode(bool v);
 
         struct AnimationClipInfo
         {

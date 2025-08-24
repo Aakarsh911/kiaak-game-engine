@@ -1,7 +1,9 @@
 #include "Core/Scene.hpp"
 #include "Graphics/SpriteRenderer.hpp"
+#include "Core/Tilemap.hpp"
 #include "Core/Camera.hpp"
 #include <algorithm>
+#include <vector>
 #include <iostream>
 
 namespace Kiaak
@@ -167,12 +169,13 @@ namespace Kiaak
             if (m_started)
                 return;
 
-            for (auto &gameObject : m_gameObjects)
+            // Use index-based loop so GameObjects created during Start (e.g. Tilemap spawning collider children)
+            // are also started safely without invalidating iterators.
+            for (size_t i = 0; i < m_gameObjects.size(); ++i)
             {
-                if (gameObject->IsActive())
-                {
+                auto &gameObject = m_gameObjects[i];
+                if (gameObject && gameObject->IsActive())
                     gameObject->Start();
-                }
             }
 
             m_started = true;
@@ -206,29 +209,49 @@ namespace Kiaak
 
         void Scene::Render(bool includeDisabledForEditor)
         {
-            // Render GameObjects with SpriteRenderer components
-            for (auto &gameObject : m_gameObjects)
+            // Gather active game objects
+            std::vector<GameObject *> renderList;
+            renderList.reserve(m_gameObjects.size());
+            for (auto &go : m_gameObjects)
             {
-                if (!gameObject->IsActive())
-                    continue;
+                if (go->IsActive())
+                    renderList.push_back(go.get());
+            }
 
-                auto *spriteRenderer = gameObject->GetComponent<Graphics::SpriteRenderer>();
-                if (!spriteRenderer)
-                    continue;
+            // Sort by Transform Z (ascending) so higher Z draws later (on top)
+            std::stable_sort(renderList.begin(), renderList.end(), [](GameObject *a, GameObject *b)
+                             {
+                                 float za = 0.0f, zb = 0.0f;
+                                 if (auto *ta = a->GetTransform())
+                                     za = ta->GetPosition().z;
+                                 if (auto *tb = b->GetTransform())
+                                     zb = tb->GetPosition().z;
+                                 return za < zb; // painter's algorithm: back (low z) first
+                             });
 
-                if (spriteRenderer->IsEnabled())
+            for (auto *gameObject : renderList)
+            {
+                if (auto *tilemap = gameObject->GetComponent<Tilemap>())
                 {
-                    spriteRenderer->Render();
+                    if (tilemap->IsEnabled())
+                        tilemap->Render();
                 }
-                else if (includeDisabledForEditor)
+                if (auto *spriteRenderer = gameObject->GetComponent<Graphics::SpriteRenderer>())
                 {
-                    bool prevVisible = spriteRenderer->IsVisible();
-                    glm::vec4 prevColor = spriteRenderer->GetColor();
-                    const_cast<Graphics::SpriteRenderer *>(spriteRenderer)->SetVisible(true);
-                    const_cast<Graphics::SpriteRenderer *>(spriteRenderer)->SetColor(prevColor * glm::vec4(1.0f, 1.0f, 1.0f, 0.35f));
-                    spriteRenderer->Render();
-                    const_cast<Graphics::SpriteRenderer *>(spriteRenderer)->SetColor(prevColor);
-                    const_cast<Graphics::SpriteRenderer *>(spriteRenderer)->SetVisible(prevVisible);
+                    if (spriteRenderer->IsEnabled())
+                    {
+                        spriteRenderer->Render();
+                    }
+                    else if (includeDisabledForEditor)
+                    {
+                        bool prevVisible = spriteRenderer->IsVisible();
+                        glm::vec4 prevColor = spriteRenderer->GetColor();
+                        const_cast<Graphics::SpriteRenderer *>(spriteRenderer)->SetVisible(true);
+                        const_cast<Graphics::SpriteRenderer *>(spriteRenderer)->SetColor(prevColor * glm::vec4(1.0f, 1.0f, 1.0f, 0.35f));
+                        spriteRenderer->Render();
+                        const_cast<Graphics::SpriteRenderer *>(spriteRenderer)->SetColor(prevColor);
+                        const_cast<Graphics::SpriteRenderer *>(spriteRenderer)->SetVisible(prevVisible);
+                    }
                 }
             }
         }

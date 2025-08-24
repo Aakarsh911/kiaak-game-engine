@@ -6,6 +6,7 @@
 #include "Core/Animator.hpp"
 #include "Core/Rigidbody2D.hpp"
 #include "Core/Collider2D.hpp"
+#include "Core/Tilemap.hpp"
 #include "Editor/EditorUI.hpp"
 #include <fstream>
 #include <sstream>
@@ -75,6 +76,21 @@ namespace Kiaak::Core
                     << " trigger " << (box->IsTrigger() ? 1 : 0)
                     << "\n";
             }
+        }
+        if (auto *tm = go->GetComponent<Tilemap>())
+        {
+            out << "    TILEMAP size " << tm->GetWidth() << ' ' << tm->GetHeight()
+                << " tileSize " << tm->GetTileWidth() << ' ' << tm->GetTileHeight()
+                << " frames " << tm->GetHFrames() << ' ' << tm->GetVFrames()
+                << " texture " << tm->GetTexturePath() << "\n";
+            out << "    TILEDATA ";
+            const auto &tiles = tm->GetTiles();
+            for (size_t i = 0; i < tiles.size(); ++i)
+                out << tiles[i] << (i + 1 < tiles.size() ? ' ' : '\n');
+            out << "    TILECOLLIDERS ";
+            const auto &cols = tm->GetColliderFlags();
+            for (size_t i = 0; i < cols.size(); ++i)
+                out << (int)cols[i] << (i + 1 < cols.size() ? ' ' : '\n');
         }
     }
 
@@ -160,6 +176,58 @@ namespace Kiaak::Core
                 if (goName.rfind("EditorCamera", 0) == 0)
                     continue;
                 currentScene->CreateGameObject(goName);
+            }
+            else if (token == "TILEMAP" && currentScene)
+            {
+                auto objs = currentScene->GetAllGameObjects();
+                if (objs.empty())
+                    continue;
+                auto *go = objs.back();
+                int w, h;
+                std::string temp;
+                float tw, th;
+                int hf, vf;
+                std::string tex;
+                iss >> temp >> w >> h >> temp >> tw >> th >> temp >> hf >> vf >> temp >> tex;
+                if (go)
+                {
+                    auto *tm = go->GetComponent<Tilemap>();
+                    if (!tm)
+                        tm = go->AddComponent<Tilemap>();
+                    tm->SetMapSize(w, h);
+                    tm->SetTileSize(tw, th);
+                    tm->SetTileset(tex, hf, vf);
+                }
+            }
+            else if (token == "TILEDATA" && currentScene)
+            {
+                auto objs = currentScene->GetAllGameObjects();
+                if (objs.empty())
+                    continue;
+                auto *go = objs.back();
+                if (auto *tm = go->GetComponent<Tilemap>())
+                {
+                    auto &tiles = tm->GetTiles();
+                    for (size_t i = 0; i < tiles.size(); ++i)
+                        iss >> tiles[i];
+                }
+            }
+            else if (token == "TILECOLLIDERS" && currentScene)
+            {
+                auto objs = currentScene->GetAllGameObjects();
+                if (objs.empty())
+                    continue;
+                auto *go = objs.back();
+                if (auto *tm = go->GetComponent<Tilemap>())
+                {
+                    auto &cols = tm->GetColliderFlags();
+                    int v;
+                    for (size_t i = 0; i < cols.size(); ++i)
+                    {
+                        iss >> v;
+                        cols[i] = (uint8_t)v;
+                    }
+                }
             }
             else if (token == "PHYSICS2D" && currentScene)
             {
@@ -351,8 +419,6 @@ namespace Kiaak::Core
             if (auto *cam = go->GetComponent<Camera>())
                 sc->SetDesignatedCamera(cam);
         }
-        // Clean rewrite
-        SaveAllScenes(manager, filePath);
         return true;
     }
 
@@ -384,6 +450,9 @@ namespace Kiaak::Core
             if (!go)
                 continue;
             if (go->GetName().rfind("EditorCamera", 0) == 0)
+                continue;
+            // Skip auto-generated tile colliders (always rebuilt at runtime)
+            if (go->GetName().rfind("TileCollider", 0) == 0)
                 continue;
             WriteGameObject(out, go);
         }
@@ -430,7 +499,61 @@ namespace Kiaak::Core
                 iss >> goName;
                 if (goName.rfind("EditorCamera", 0) == 0)
                     continue;
+                if (goName.rfind("TileCollider", 0) == 0)
+                    continue; // don't recreate serialized tile colliders
                 currentScene->CreateGameObject(goName);
+            }
+            else if (token == "TILEMAP" && currentScene)
+            {
+                auto objs = currentScene->GetAllGameObjects();
+                if (objs.empty())
+                    continue;
+                auto *go = objs.back();
+                int w, h;
+                std::string temp;
+                float tw, th;
+                int hf, vf;
+                std::string tex;
+                iss >> temp >> w >> h >> temp >> tw >> th >> temp >> hf >> vf >> temp >> tex;
+                if (go)
+                {
+                    auto *tm = go->GetComponent<Tilemap>();
+                    if (!tm)
+                        tm = go->AddComponent<Tilemap>();
+                    tm->SetMapSize(w, h);
+                    tm->SetTileSize(tw, th);
+                    tm->SetTileset(tex, hf, vf);
+                }
+            }
+            else if (token == "TILEDATA" && currentScene)
+            {
+                auto objs = currentScene->GetAllGameObjects();
+                if (objs.empty())
+                    continue;
+                auto *go = objs.back();
+                if (auto *tm = go->GetComponent<Tilemap>())
+                {
+                    auto &tiles = tm->GetTiles();
+                    for (size_t i = 0; i < tiles.size(); ++i)
+                        iss >> tiles[i];
+                }
+            }
+            else if (token == "TILECOLLIDERS" && currentScene)
+            {
+                auto objs = currentScene->GetAllGameObjects();
+                if (objs.empty())
+                    continue;
+                auto *go = objs.back();
+                if (auto *tm = go->GetComponent<Tilemap>())
+                {
+                    auto &cols = tm->GetColliderFlags();
+                    int v;
+                    for (size_t i = 0; i < cols.size(); ++i)
+                    {
+                        iss >> v;
+                        cols[i] = (uint8_t)v;
+                    }
+                }
             }
             else if (token == "PHYSICS2D" && currentScene)
             {
