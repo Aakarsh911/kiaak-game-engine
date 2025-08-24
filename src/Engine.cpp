@@ -1,4 +1,5 @@
 #include "Engine.hpp"
+#include "imgui.h"
 #include "Graphics/SpriteRenderer.hpp"
 #include "Core/Camera.hpp"
 #include "Core/Animator.hpp"
@@ -497,9 +498,10 @@ namespace Kiaak
 
                 auto *editorTransform = editorCamera->GetGameObject()->GetTransform();
                 glm::vec3 currentPos = editorTransform->GetPosition();
-                float sensitivity = 1.0f;
-                currentPos.x -= mouseDeltaX * sensitivity;
-                currentPos.y += mouseDeltaY * sensitivity;
+                // Reduced sensitivity for smoother/slower pan
+                const float sensitivity = 0.25f; // previously 1.0f
+                currentPos.x -= (float)mouseDeltaX * sensitivity;
+                currentPos.y += (float)mouseDeltaY * sensitivity;
 
                 editorTransform->SetPosition(currentPos.x, currentPos.y, currentPos.z);
                 // Ensure the camera view matrix is marked dirty if not updated elsewhere this frame
@@ -514,11 +516,12 @@ namespace Kiaak
         }
 
         double scrollY = Input::GetScrollY();
-        if (scrollY != 0.0)
+        // Prevent scroll-wheel zoom when UI wants the mouse (hovering/scrolling over ImGui windows)
+        if (scrollY != 0.0 && !ImGui::GetIO().WantCaptureMouse)
         {
             float currentZoom = editorCamera->GetZoom();
-            float zoomSensitivity = 0.1f;
-            float newZoom = currentZoom + (scrollY * zoomSensitivity);
+            const float zoomSensitivity = 0.1f;
+            float newZoom = currentZoom + (float)(scrollY * zoomSensitivity);
             newZoom = glm::clamp(newZoom, 0.01f, 100.0f);
             editorCamera->SetZoom(newZoom);
         }

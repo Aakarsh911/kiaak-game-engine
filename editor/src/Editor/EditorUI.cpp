@@ -330,7 +330,6 @@ namespace Kiaak
         g_textureCache[path] = tex;
         return tex;
     }
-    static std::filesystem::file_time_type g_lastAssetScanTime{};
     static double g_lastAssetRefreshCheck = 0.0; // seconds since start
     static const char *kAssetDir = "assets";     // fallback when no project
 
@@ -391,8 +390,115 @@ namespace Kiaak
         ImGui::CreateContext();
         ImGuiIO &io = ImGui::GetIO();
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+        // Docking disabled: current ImGui build lacks docking branch.
 
-        ImGui::StyleColorsDark();
+        ImGui::StyleColorsDark(); // start from dark base
+
+        // --- Modern Theme Override ---
+        {
+            ImGuiStyle &style = ImGui::GetStyle();
+            style.WindowRounding = 6.0f;
+            style.FrameRounding = 5.0f;
+            style.ChildRounding = 5.0f;
+            style.PopupRounding = 5.0f;
+            style.GrabRounding = 4.0f;
+            style.ScrollbarRounding = 6.0f;
+            style.TabRounding = 5.0f;
+            style.FrameBorderSize = 1.0f;
+            style.WindowBorderSize = 1.0f;
+            style.TabBorderSize = 0.0f;
+            style.SeparatorTextBorderSize = 1.0f;
+            style.WindowPadding = ImVec2(10, 10);
+            style.FramePadding = ImVec2(10, 6);
+            style.ItemSpacing = ImVec2(8, 6);
+            style.ItemInnerSpacing = ImVec2(6, 4);
+
+            ImVec4 bg1 = ImVec4(0.11f, 0.12f, 0.14f, 1.0f);
+            ImVec4 bg2 = ImVec4(0.15f, 0.16f, 0.19f, 1.0f);
+            ImVec4 bg3 = ImVec4(0.20f, 0.21f, 0.24f, 1.0f);
+            ImVec4 accent = ImVec4(0.05f, 0.55f, 0.78f, 1.0f);    // primary accent (teal)
+            ImVec4 accentHi = ImVec4(0.15f, 0.65f, 0.88f, 1.0f);  // hover accent
+            ImVec4 accentAct = ImVec4(0.02f, 0.45f, 0.68f, 1.0f); // active accent
+            ImVec4 text = ImVec4(0.93f, 0.94f, 0.95f, 1.0f);
+            ImVec4 textDim = ImVec4(0.55f, 0.58f, 0.62f, 1.0f);
+
+            auto &colors = style.Colors;
+            colors[ImGuiCol_Text] = text;
+            colors[ImGuiCol_TextDisabled] = textDim;
+            colors[ImGuiCol_WindowBg] = bg1;
+            colors[ImGuiCol_ChildBg] = bg1;
+            colors[ImGuiCol_PopupBg] = bg1;
+            colors[ImGuiCol_Border] = ImVec4(0.27f, 0.29f, 0.33f, 1.0f);
+            colors[ImGuiCol_BorderShadow] = ImVec4(0, 0, 0, 0.0f);
+            colors[ImGuiCol_FrameBg] = bg2;
+            colors[ImGuiCol_FrameBgHovered] = bg3;
+            colors[ImGuiCol_FrameBgActive] = bg3;
+            colors[ImGuiCol_TitleBg] = bg1;
+            colors[ImGuiCol_TitleBgActive] = bg2;
+            colors[ImGuiCol_TitleBgCollapsed] = bg1;
+            colors[ImGuiCol_MenuBarBg] = bg2;
+            colors[ImGuiCol_ScrollbarBg] = bg1;
+            colors[ImGuiCol_ScrollbarGrab] = bg2;
+            colors[ImGuiCol_ScrollbarGrabHovered] = bg3;
+            colors[ImGuiCol_ScrollbarGrabActive] = bg3;
+            colors[ImGuiCol_CheckMark] = accent;
+            colors[ImGuiCol_SliderGrab] = accent;
+            colors[ImGuiCol_SliderGrabActive] = accentHi;
+            colors[ImGuiCol_Button] = bg2;
+            colors[ImGuiCol_ButtonHovered] = bg3;
+            colors[ImGuiCol_ButtonActive] = accentAct;
+            colors[ImGuiCol_Header] = accent;
+            colors[ImGuiCol_HeaderHovered] = accentHi;
+            colors[ImGuiCol_HeaderActive] = accentAct;
+            colors[ImGuiCol_Separator] = ImVec4(0.30f, 0.32f, 0.36f, 1.0f);
+            colors[ImGuiCol_SeparatorHovered] = accentHi;
+            colors[ImGuiCol_SeparatorActive] = accentAct;
+            colors[ImGuiCol_ResizeGrip] = bg2;
+            colors[ImGuiCol_ResizeGripHovered] = accentHi;
+            colors[ImGuiCol_ResizeGripActive] = accentAct;
+            colors[ImGuiCol_Tab] = bg2;
+            colors[ImGuiCol_TabHovered] = accentHi;
+            colors[ImGuiCol_TabActive] = accent;
+            colors[ImGuiCol_TabUnfocused] = bg2;
+            colors[ImGuiCol_TabUnfocusedActive] = accent;
+            colors[ImGuiCol_TableHeaderBg] = bg2;
+            colors[ImGuiCol_TableBorderStrong] = ImVec4(0.25f, 0.27f, 0.30f, 1.0f);
+            colors[ImGuiCol_TableBorderLight] = ImVec4(0.17f, 0.18f, 0.20f, 1.0f);
+            colors[ImGuiCol_NavHighlight] = accentHi;
+            colors[ImGuiCol_NavWindowingHighlight] = ImVec4(1, 1, 1, 0.70f);
+            colors[ImGuiCol_NavWindowingDimBg] = ImVec4(0, 0, 0, 0.20f);
+            colors[ImGuiCol_ModalWindowDimBg] = ImVec4(0, 0, 0, 0.35f);
+        }
+
+        // --- Font Loading (Primary + Optional Icon Merge) ---
+        // Users can drop fonts into assets/fonts/ (e.g., JetBrainsMono-Regular.ttf, MaterialIcons.ttf)
+        {
+            const char *monoPath = "assets/fonts/JetBrainsMono-Regular.ttf";  // optional
+            const char *iconPath = "assets/fonts/MaterialSymbolsRounded.ttf"; // user-provided (not bundled).
+            float baseSize = 16.0f;
+            if (std::filesystem::exists(monoPath))
+            {
+                ImFontConfig cfg;
+                cfg.OversampleH = 3;
+                cfg.OversampleV = 2;
+                cfg.PixelSnapH = false;
+                cfg.GlyphOffset = ImVec2(0, 0);
+                io.Fonts->AddFontFromFileTTF(monoPath, baseSize, &cfg);
+            }
+            else
+            {
+                io.Fonts->AddFontDefault();
+            }
+            if (std::filesystem::exists(iconPath))
+            {
+                static const ImWchar iconRanges[] = {0xE000, 0xF8FF, 0}; // Private Use Area
+                ImFontConfig icfg;
+                icfg.MergeMode = true;
+                icfg.PixelSnapH = true;
+                icfg.GlyphMinAdvanceX = 13.0f;
+                io.Fonts->AddFontFromFileTTF(iconPath, baseSize + 2.0f, &icfg, iconRanges);
+            }
+        }
 
         // Load editor config (e.g., texture filter) before loading assets so textures can be updated immediately
         LoadEditorConfig();
@@ -554,43 +660,6 @@ namespace Kiaak
         constexpr float kTopBarHeight = 34.0f; // must match top bar height
         ImGui::SetNextWindowPos(ImVec2(0, kTopBarHeight));
         ImGui::SetNextWindowSize(ImVec2(320, ImGui::GetIO().DisplaySize.y - 200 - kTopBarHeight));
-        // Clip settings / controls for selected clip
-        if (g_selectedClipIndex >= 0 && g_selectedClipIndex < (int)g_animationClips.size())
-        {
-            auto &clipSettings = g_animationClips[g_selectedClipIndex];
-            ImGui::Separator();
-            ImGui::Text("Settings");
-            ImGui::SliderFloat("FPS", &clipSettings.fps, 1.0f, 60.0f, "%.1f");
-            ImGui::Checkbox("Auto Play", &clipSettings.autoPlay);
-            // Runtime play/stop convenience (affects any selected object's animator using this clip)
-            if (ImGui::Button("Play"))
-            {
-                // Find any gameobject assigned this clip and start its animator
-                for (auto &pair : g_objectClipAssignments)
-                {
-                    if (pair.second == g_selectedClipIndex && pair.first)
-                    {
-                        if (auto *anim = pair.first->GetComponent<Core::Animator>())
-                        {
-                            anim->SetClipIndex(g_selectedClipIndex);
-                            anim->Play();
-                        }
-                    }
-                }
-            }
-            ImGui::SameLine();
-            if (ImGui::Button("Stop"))
-            {
-                for (auto &pair : g_objectClipAssignments)
-                {
-                    if (pair.second == g_selectedClipIndex && pair.first)
-                    {
-                        if (auto *anim = pair.first->GetComponent<Core::Animator>())
-                            anim->Stop();
-                    }
-                }
-            }
-        }
         if (ImGui::Begin("Scene Hierarchy", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse))
         {
             if (sceneManager)
@@ -600,12 +669,15 @@ namespace Kiaak
                 {
                     if (ImGui::MenuItem("New Animation"))
                     {
-                        // Create empty clip and open sheet editor (will prompt for sprite sheet via asset selection inside editor)
+                        // Create empty clip (no auto sheet popup)
                         EditorUI::AnimationClipInfo clip;
                         clip.name = "Anim" + std::to_string((int)g_animationClips.size() + 1);
                         g_animationClips.push_back(clip);
-                        g_sheetEditorClipIndex = (int)g_animationClips.size() - 1;
-                        g_openSheetEditor = true;
+                        g_selectedClipIndex = (int)g_animationClips.size() - 1;
+                        // Persist immediately
+                        std::ofstream out(kAnimationClipsFile);
+                        if (out.good())
+                            WriteClipsJSON(g_animationClips, out);
                     }
                     if (ImGui::MenuItem("New Scene"))
                     {
@@ -653,7 +725,9 @@ namespace Kiaak
                         }
                         for (auto &path : assets)
                         {
-                            if (ImGui::MenuItem(path.c_str()))
+                            std::filesystem::path p(path);
+                            std::string fname = p.filename().string();
+                            if (ImGui::MenuItem(fname.c_str()))
                             {
                                 if (activeScene)
                                 {
@@ -669,6 +743,8 @@ namespace Kiaak
                                     }
                                 }
                             }
+                            if (ImGui::IsItemHovered())
+                                ImGui::SetTooltip("%s", path.c_str());
                         }
                         ImGui::EndMenu();
                     }
@@ -745,34 +821,31 @@ namespace Kiaak
                             {
                                 if (hasCamera)
                                 {
-                                    // Camera icon: body rectangle + lens circle
-                                    ImU32 bodyCol = IM_COL32(90, 160, 255, 255);
-                                    ImU32 lensCol = IM_COL32(240, 250, 255, 255);
-                                    // Body
-                                    dl->AddRectFilled(iconMin, iconMax, bodyCol, 2.0f);
-                                    // Lens (circle) inside
-                                    float lensRadius = iconSize * 0.28f;
-                                    ImVec2 lensCenter(iconMin.x + iconSize * 0.65f, iconMin.y + iconSize * 0.5f);
-                                    dl->AddCircleFilled(lensCenter, lensRadius, lensCol, 12);
-                                    // Small viewfinder protrusion
-                                    ImVec2 vf0(iconMin.x - iconSize * 0.25f, iconMin.y + iconSize * 0.15f);
-                                    ImVec2 vf1(iconMin.x, iconMin.y + iconSize * 0.55f);
-                                    dl->AddRectFilled(vf0, vf1, bodyCol, 1.5f);
+                                    // Warmer camera icon
+                                    ImU32 bodyCol = IM_COL32(227, 166, 64, 255);  // amber
+                                    ImU32 lensCol = IM_COL32(255, 244, 220, 255); // warm light
+                                    dl->AddRectFilled(iconMin, iconMax, bodyCol, 2.5f);
+                                    float lensRadius = iconSize * 0.30f;
+                                    ImVec2 lensCenter(iconMin.x + iconSize * 0.63f, iconMin.y + iconSize * 0.50f);
+                                    dl->AddCircleFilled(lensCenter, lensRadius, lensCol, 14);
+                                    ImVec2 vf0(iconMin.x - iconSize * 0.24f, iconMin.y + iconSize * 0.18f);
+                                    ImVec2 vf1(iconMin.x, iconMin.y + iconSize * 0.58f);
+                                    dl->AddRectFilled(vf0, vf1, bodyCol, 2.0f);
                                 }
                                 else if (hasSprite)
                                 {
-                                    // Sprite icon: stacked diamond outline + filled square
-                                    ImU32 fillCol = IM_COL32(255, 180, 60, 255);
-                                    ImU32 outlineCol = IM_COL32(255, 140, 0, 255);
+                                    // Warmer sprite icon
+                                    ImU32 fillCol = IM_COL32(255, 138, 101, 255);  // coral
+                                    ImU32 outlineCol = IM_COL32(217, 90, 58, 255); // deeper outline
                                     float cx = (iconMin.x + iconMax.x) * 0.5f;
                                     float cy = (iconMin.y + iconMax.y) * 0.5f;
-                                    float r = iconSize * 0.45f;
+                                    float r = iconSize * 0.46f;
                                     ImVec2 p0(cx, cy - r);
                                     ImVec2 p1(cx + r, cy);
                                     ImVec2 p2(cx, cy + r);
                                     ImVec2 p3(cx - r, cy);
                                     dl->AddQuadFilled(p0, p1, p2, p3, fillCol);
-                                    dl->AddQuad(p0, p1, p2, p3, outlineCol, 1.0f);
+                                    dl->AddQuad(p0, p1, p2, p3, outlineCol, 1.2f);
                                 }
                             }
                             if (ImGui::IsItemClicked())
@@ -1338,15 +1411,75 @@ namespace Kiaak
             }
 
             float windowW = ImGui::GetWindowSize().x;
-            // Center play/pause button
-            ImGui::SetCursorPos(ImVec2(windowW * 0.5f - 40.0f, 4.0f));
+            // Center custom vector play/pause button (avoid missing glyph '?')
+            ImGui::SetCursorPos(ImVec2(windowW * 0.5f - 55.0f, 4.0f));
             if (auto *eng = Engine::Get())
             {
-                const char *label = eng->IsEditorMode() ? "Play" : "Pause";
-                if (ImGui::Button(label, ImVec2(80, kTopBarHeight - 8)))
+                bool editing = eng->IsEditorMode(); // editing=true means we show Play triangle
+                const float btnW = 110.0f;
+                const float btnH = kTopBarHeight - 8.0f;
+                ImVec2 btnPos = ImGui::GetCursorScreenPos();
+                ImGui::InvisibleButton("PlayPauseBtn", ImVec2(btnW, btnH));
+                bool hovered = ImGui::IsItemHovered();
+                bool held = ImGui::IsItemActive();
+                bool clicked = ImGui::IsItemClicked();
+
+                // Colors: vibrant green when idle (ready to play), neutral scheme while playing
+                ImVec4 basePlay = ImVec4(0.14f, 0.70f, 0.25f, 1.0f);
+                ImVec4 basePause = ImGui::GetStyle().Colors[ImGuiCol_Button];
+                ImVec4 hovPlay = ImVec4(0.20f, 0.80f, 0.32f, 1.0f);
+                ImVec4 hovPause = ImGui::GetStyle().Colors[ImGuiCol_ButtonHovered];
+                ImVec4 actPlay = ImVec4(0.09f, 0.55f, 0.18f, 1.0f);
+                ImVec4 actPause = ImGui::GetStyle().Colors[ImGuiCol_ButtonActive];
+                ImVec4 bg = editing ? basePlay : basePause;
+                if (hovered)
+                    bg = editing ? hovPlay : hovPause;
+                if (held)
+                    bg = editing ? actPlay : actPause;
+
+                ImDrawList *dl = ImGui::GetWindowDrawList();
+                ImVec2 brMin = btnPos;
+                ImVec2 brMax = ImVec2(btnPos.x + btnW, btnPos.y + btnH);
+                float rounding = 6.0f;
+                dl->AddRectFilled(brMin, brMax, ImGui::GetColorU32(bg), rounding);
+                dl->AddRect(brMin, brMax, ImGui::GetColorU32(ImVec4(0, 0, 0, 0.35f)), rounding);
+
+                // Icon geometry (centered slightly upward to make room for text)
+                ImVec2 center((brMin.x + brMax.x) * 0.5f, (brMin.y + brMax.y) * 0.5f - 2.0f);
+                float iconH = btnH * 0.45f;
+                float iconW = iconH;
+                ImU32 iconCol = ImGui::GetColorU32(ImVec4(1, 1, 1, 0.95f));
+                if (editing)
                 {
-                    eng->TogglePlayPause();
+                    // Play triangle
+                    ImVec2 p0(center.x - iconW * 0.42f, center.y - iconH * 0.60f);
+                    ImVec2 p1(center.x - iconW * 0.42f, center.y + iconH * 0.60f);
+                    ImVec2 p2(center.x + iconW * 0.70f, center.y);
+                    dl->AddTriangleFilled(p0, p1, p2, iconCol);
                 }
+                else
+                {
+                    // Pause bars
+                    float barW = iconW * 0.30f;
+                    float gap = iconW * 0.24f;
+                    float barH = iconH * 1.15f;
+                    ImVec2 leftMin(center.x - (barW + gap * 0.5f), center.y - barH * 0.5f);
+                    ImVec2 leftMax(leftMin.x + barW, leftMin.y + barH);
+                    ImVec2 rightMin(center.x + gap * 0.5f, center.y - barH * 0.5f);
+                    ImVec2 rightMax(rightMin.x + barW, rightMin.y + barH);
+                    dl->AddRectFilled(leftMin, leftMax, iconCol, 2.0f);
+                    dl->AddRectFilled(rightMin, rightMax, iconCol, 2.0f);
+                }
+
+                // Descriptive text label (kept small)
+                const char *txt = editing ? "Play" : "Pause";
+                ImVec2 ts = ImGui::CalcTextSize(txt);
+                ImVec2 tp(center.x - ts.x * 0.5f, brMax.y - ts.y - 4.0f);
+
+                if (hovered)
+                    ImGui::SetTooltip(editing ? "Start Play Mode" : "Return to Edit Mode");
+                if (clicked)
+                    eng->TogglePlayPause();
             }
         }
         ImGui::End();
@@ -1378,8 +1511,6 @@ namespace Kiaak
             {
                 RefreshAssetList(true);
             }
-            ImGui::SameLine();
-            ImGui::TextDisabled("(auto refresh throttled)");
 
             ImGui::SameLine();
             if (ImGui::Button("Import Asset"))
@@ -1478,12 +1609,19 @@ namespace Kiaak
             const auto &assets = GetAssetFiles();
             ImGui::Separator();
             ImGui::BeginChild("AssetList");
+            int assetIndex = 0;
             for (auto &a : assets)
             {
-                if (ImGui::Selectable(a.c_str()))
+                std::filesystem::path p(a);
+                std::string fname = p.filename().string();
+                ImGui::PushID(assetIndex++);
+                if (ImGui::Selectable(fname.c_str()))
                 {
-                    // Handle asset selection
+                    // Handle asset selection (if future logic added)
                 }
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("%s", a.c_str());
+                ImGui::PopID();
             }
             ImGui::EndChild();
         }
@@ -1553,12 +1691,47 @@ namespace Kiaak
                     g_openSheetEditor = true;
                 }
             }
-            // Settings for selected clip (fps/autoplay + runtime control)
+            // Settings for selected clip (rename / fps / autoplay + runtime control)
             if (g_selectedClipIndex >= 0 && g_selectedClipIndex < (int)g_animationClips.size())
             {
                 auto &cset = g_animationClips[g_selectedClipIndex];
                 ImGui::Separator();
                 ImGui::Text("Clip Settings");
+                // Inline rename
+                static char clipNameBuf[256];
+                // Sync buffer if different and no active edit
+                if (!ImGui::IsAnyItemActive())
+                {
+                    if (strncmp(clipNameBuf, cset.name.c_str(), sizeof(clipNameBuf)) != 0)
+                    {
+                        strncpy(clipNameBuf, cset.name.c_str(), sizeof(clipNameBuf) - 1);
+                        clipNameBuf[sizeof(clipNameBuf) - 1] = '\0';
+                    }
+                }
+                ImGui::Text("Name");
+                ImGui::SameLine();
+                ImGui::PushItemWidth(200.0f);
+                bool nameChanged = false;
+                if (ImGui::InputText("##ClipNameEdit", clipNameBuf, sizeof(clipNameBuf), ImGuiInputTextFlags_EnterReturnsTrue))
+                {
+                    nameChanged = true;
+                }
+                // Also commit when focus leaves the item after editing
+                if (ImGui::IsItemDeactivatedAfterEdit())
+                    nameChanged = true;
+                ImGui::PopItemWidth();
+                if (nameChanged)
+                {
+                    std::string newName = clipNameBuf;
+                    if (!newName.empty() && newName != cset.name)
+                    {
+                        cset.name = newName;
+                        // Auto-save all clips immediately after rename
+                        std::ofstream out(kAnimationClipsFile);
+                        if (out.good())
+                            WriteClipsJSON(g_animationClips, out);
+                    }
+                }
                 ImGui::SliderFloat("FPS", &cset.fps, 1.0f, 60.0f, "%.1f");
                 ImGui::Checkbox("Auto Play", &cset.autoPlay);
                 if (ImGui::Button("Play"))
@@ -1688,18 +1861,30 @@ namespace Kiaak
                 RefreshAssetList();
                 ImGui::Separator();
                 ImGui::BeginChild("SheetAssetPick", ImVec2(0, 0), true);
+                int pickIndex = 0;
                 for (auto &a : GetAssetFiles())
                 {
-                    if (ImGui::Selectable(a.c_str()))
+                    std::filesystem::path p(a);
+                    std::string fname = p.filename().string();
+                    ImGui::PushID(pickIndex++);
+                    if (ImGui::Selectable(fname.c_str()))
                     {
-                        clip.texturePath = a;
+                        clip.texturePath = a; // store full path internally
                     }
+                    if (ImGui::IsItemHovered())
+                        ImGui::SetTooltip("%s", a.c_str());
+                    ImGui::PopID();
                 }
                 ImGui::EndChild();
             }
             else
             {
-                ImGui::TextWrapped("Sheet: %s", clip.texturePath.c_str());
+                // Display only filename but tooltip full path
+                std::filesystem::path p(clip.texturePath);
+                auto fname = p.filename().string();
+                ImGui::TextWrapped("Sheet: %s", fname.c_str());
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("%s", clip.texturePath.c_str());
                 auto tex = GetOrLoadTexture(clip.texturePath);
                 if (!tex)
                 {

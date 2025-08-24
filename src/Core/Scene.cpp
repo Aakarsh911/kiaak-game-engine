@@ -20,7 +20,7 @@ namespace Kiaak
             std::cout << "Scene destroyed" << std::endl;
         }
 
-        // GameObject management (new component-based system)
+        // GameObject management
         GameObject *Scene::CreateGameObject(const std::string &name)
         {
             std::string uniqueName = GenerateUniqueGameObjectName(name);
@@ -222,11 +222,8 @@ namespace Kiaak
                 }
                 else if (includeDisabledForEditor)
                 {
-                    // Temporarily force a render with visual dim to indicate disabled state
-                    // (non-destructive: restore color/visibility afterwards if needed)
                     bool prevVisible = spriteRenderer->IsVisible();
                     glm::vec4 prevColor = spriteRenderer->GetColor();
-                    // Make sure it's visible and multiply alpha
                     const_cast<Graphics::SpriteRenderer *>(spriteRenderer)->SetVisible(true);
                     const_cast<Graphics::SpriteRenderer *>(spriteRenderer)->SetColor(prevColor * glm::vec4(1.0f, 1.0f, 1.0f, 0.35f));
                     spriteRenderer->Render();
