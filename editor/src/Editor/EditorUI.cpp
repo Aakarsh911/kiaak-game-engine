@@ -45,7 +45,7 @@ namespace Kiaak
     // Tilemap painting state
     static int g_tilemapPaintIndex = 0;
     static bool g_tilemapBrushErase = false;
-    static bool g_tilemapPaintMode = false; // must be toggled in inspector
+    static bool g_tilemapPaintMode = false;    // must be toggled in inspector
     static bool g_tilemapColliderMode = false; // mutually exclusive with paint mode
     // Editor config persistence (e.g., texture filter mode)
     static const char *kEditorConfigFile = "editor_config.json"; // stored in project root if a project is open, else cwd
@@ -1552,12 +1552,14 @@ namespace Kiaak
                     ImGui::Separator();
                     if (ImGui::Checkbox("Paint Mode", &g_tilemapPaintMode))
                     {
-                        if (g_tilemapPaintMode) g_tilemapColliderMode = false;
+                        if (g_tilemapPaintMode)
+                            g_tilemapColliderMode = false;
                     }
                     ImGui::SameLine();
                     if (ImGui::Checkbox("Collider Mode", &g_tilemapColliderMode))
                     {
-                        if (g_tilemapColliderMode) g_tilemapPaintMode = false;
+                        if (g_tilemapColliderMode)
+                            g_tilemapPaintMode = false;
                     }
                     if (g_tilemapPaintMode)
                         ImGui::TextDisabled("Palette: LMB select, RMB erase brush");

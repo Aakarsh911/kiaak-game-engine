@@ -33,8 +33,8 @@ namespace Kiaak
         static void SetActiveTilemapPaintIndex(int index);
         static bool IsTilemapPaintMode();
         static void SetTilemapPaintMode(bool v);
-    static bool IsTilemapColliderMode();
-    static void SetTilemapColliderMode(bool v);
+        static bool IsTilemapColliderMode();
+        static void SetTilemapColliderMode(bool v);
 
         struct AnimationClipInfo
         {

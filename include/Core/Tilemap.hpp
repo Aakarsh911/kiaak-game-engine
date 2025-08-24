@@ -18,7 +18,7 @@ namespace Kiaak::Core
         std::string GetTypeName() const override { return "Tilemap"; }
         void Start() override;
         void Render();
-    void RebuildColliders(); // create per-tile collider GameObjects for frames flagged solid
+        void RebuildColliders(); // create per-tile collider GameObjects for frames flagged solid
         void SetMapSize(int w, int h);
         void SetTileSize(float w, float h);
         void SetTileset(const std::string &path, int hFrames, int vFrames);
@@ -48,7 +48,7 @@ namespace Kiaak::Core
         int m_vFrames;
         std::vector<int> m_tiles;
         std::vector<uint8_t> m_tileColliders;
-    std::vector<uint32_t> m_colliderObjectIDs; // spawned collider GO ids
+        std::vector<uint32_t> m_colliderObjectIDs; // spawned collider GO ids
         std::shared_ptr<Texture> m_texture;
         static std::shared_ptr<Kiaak::Shader> s_shader;
         static std::shared_ptr<Kiaak::VertexArray> s_vao;

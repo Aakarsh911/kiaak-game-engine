@@ -144,7 +144,7 @@ in vec2 vUV; out vec4 FragColor; uniform sampler2D uTex; uniform vec4 uTint; voi
     {
         EnsureResources();
         EnsureTexture();
-    RebuildColliders();
+        RebuildColliders();
     }
 
     void Tilemap::UpdateUV(float u0, float v0, float u1, float v1)
@@ -226,9 +226,11 @@ in vec2 vUV; out vec4 FragColor; uniform sampler2D uTex; uniform vec4 uTint; voi
     void Tilemap::RebuildColliders()
     {
         auto *go = GetGameObject();
-        if (!go) return;
+        if (!go)
+            return;
         auto *scene = go->GetScene();
-        if (!scene) return;
+        if (!scene)
+            return;
         // Remove old collider objects tracked previously
         for (auto id : m_colliderObjectIDs)
         {
@@ -244,7 +246,8 @@ in vec2 vUV; out vec4 FragColor; uniform sampler2D uTex; uniform vec4 uTint; voi
             auto children = go->GetChildren();
             for (auto *child : children)
             {
-                if (!child) continue;
+                if (!child)
+                    continue;
                 if (child->GetName().rfind("TileCollider", 0) == 0)
                 {
                     scene->RemoveGameObject(child);
@@ -253,19 +256,24 @@ in vec2 vUV; out vec4 FragColor; uniform sampler2D uTex; uniform vec4 uTint; voi
         }
         // Build new ones
         int frameCount = m_hFrames * m_vFrames;
-        if (frameCount <= 0) return;
+        if (frameCount <= 0)
+            return;
         auto *tr = go->GetTransform();
-        if (!tr) return;
+        if (!tr)
+            return;
         glm::vec3 basePos = tr->GetPosition();
         for (int y = 0; y < m_height; ++y)
         {
             for (int x = 0; x < m_width; ++x)
             {
                 int idx = m_tiles[y * m_width + x];
-                if (idx < 0 || idx >= frameCount) continue;
-                if (!GetTileColliderFlag(idx)) continue;
+                if (idx < 0 || idx >= frameCount)
+                    continue;
+                if (!GetTileColliderFlag(idx))
+                    continue;
                 auto *colGO = scene->CreateGameObject("TileCollider");
-                if (!colGO) continue;
+                if (!colGO)
+                    continue;
                 colGO->GetTransform()->SetPosition(glm::vec3(basePos.x + (x + 0.5f) * m_tileWidth, basePos.y + (y + 0.5f) * m_tileHeight, basePos.z));
                 if (auto *box = colGO->AddComponent<Core::BoxCollider2D>())
                 {
