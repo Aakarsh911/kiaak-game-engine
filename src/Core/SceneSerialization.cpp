@@ -7,6 +7,7 @@
 #include "Core/Rigidbody2D.hpp"
 #include "Core/Collider2D.hpp"
 #include "Core/Tilemap.hpp"
+#include "Core/ScriptComponent.hpp"
 #include "Editor/EditorUI.hpp"
 #include <fstream>
 #include <sstream>
@@ -91,6 +92,10 @@ namespace Kiaak::Core
             const auto &cols = tm->GetColliderFlags();
             for (size_t i = 0; i < cols.size(); ++i)
                 out << (int)cols[i] << (i + 1 < cols.size() ? ' ' : '\n');
+        }
+        if (auto *sc = go->GetComponent<ScriptComponent>())
+        {
+            out << "    SCRIPT path " << sc->GetScriptPath() << "\n";
         }
     }
 
@@ -305,6 +310,28 @@ namespace Kiaak::Core
                         anim->SetClipIndex(idx);
                         Kiaak::EditorUI::SetAssignedClip(go, idx);
                     }
+                }
+            }
+            else if (token == "SCRIPT" && currentScene)
+            {
+                auto objs = currentScene->GetAllGameObjects();
+                if (objs.empty())
+                    continue;
+                auto *go = objs.back();
+                std::string lbl;
+                std::string path;
+                while (iss >> lbl)
+                {
+                    if (lbl == "path")
+                        iss >> path;
+                }
+                if (!path.empty())
+                {
+                    auto *sc = go->GetComponent<ScriptComponent>();
+                    if (!sc)
+                        sc = go->AddComponent<ScriptComponent>();
+                    if (sc)
+                        sc->SetScriptPath(path);
                 }
             }
             else if (token == "CAMERA" && currentScene)
@@ -631,6 +658,28 @@ namespace Kiaak::Core
                         anim->SetClipIndex(idx);
                         Kiaak::EditorUI::SetAssignedClip(go, idx);
                     }
+                }
+            }
+            else if (token == "SCRIPT" && currentScene)
+            {
+                auto objs = currentScene->GetAllGameObjects();
+                if (objs.empty())
+                    continue;
+                auto *go = objs.back();
+                std::string lbl;
+                std::string path;
+                while (iss >> lbl)
+                {
+                    if (lbl == "path")
+                        iss >> path;
+                }
+                if (!path.empty())
+                {
+                    auto *sc = go->GetComponent<ScriptComponent>();
+                    if (!sc)
+                        sc = go->AddComponent<ScriptComponent>();
+                    if (sc)
+                        sc->SetScriptPath(path);
                 }
             }
             else if (token == "CAMERA" && currentScene)

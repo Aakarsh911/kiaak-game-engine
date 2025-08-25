@@ -17,10 +17,14 @@
 #include "Core/Rigidbody2D.hpp"
 #include "Core/Collider2D.hpp"
 #include "Core/Tilemap.hpp"
+#include "Core/ScriptComponent.hpp"
 #include <functional>
 #include <filesystem>
 #include <vector>
 #include <string>
+#include <unordered_set>
+#include <algorithm>
+#include "ImGuiColorTextEdit.h"
 #if defined(__APPLE__)
 extern "C" const char *Kiaak_ShowOpenFileDialog();
 extern "C" const char *Kiaak_ShowOpenDirectoryDialog();
@@ -50,6 +54,180 @@ namespace Kiaak
     // Editor config persistence (e.g., texture filter mode)
     static const char *kEditorConfigFile = "editor_config.json"; // stored in project root if a project is open, else cwd
     static int g_savedFilterMode = -1;                           // track last saved to avoid redundant writes
+
+    // Script editor state
+    static bool g_scriptEditorOpen = false;
+    static std::string g_openScriptPath; // relative or absolute
+    static std::string g_scriptBuffer;   // saved text (authoritative on save)
+    // Using embedded color text editor now
+    static ImGuiColorTextEdit::TextEditor g_textEditor;
+    static bool g_scriptDirty = false;
+    static bool g_textEditorInitialized = false;
+
+    void EditorUI::OpenScriptEditor(const std::string &scriptPath)
+    {
+        g_openScriptPath = scriptPath;
+        g_scriptBuffer.clear();
+        g_scriptDirty = false;
+        // Load file
+        std::ifstream ifs(scriptPath);
+        if (!ifs.is_open() && Core::Project::HasPath())
+        {
+            // Try relative to project root
+            std::ifstream ifs2(Core::Project::GetPath() + "/" + scriptPath);
+            if (ifs2.is_open())
+            {
+                g_scriptBuffer.assign(std::istreambuf_iterator<char>(ifs2), std::istreambuf_iterator<char>());
+            }
+        }
+        else if (ifs.is_open())
+        {
+            g_scriptBuffer.assign(std::istreambuf_iterator<char>(ifs), std::istreambuf_iterator<char>());
+        }
+        if (g_scriptBuffer.empty())
+            g_scriptBuffer = "-- New Script\n\n";
+        if (!g_textEditorInitialized)
+        {
+            g_textEditor.SetLanguageDefinition(ImGuiColorTextEdit::GetLuaLanguageDefinition());
+            g_textEditorInitialized = true;
+        }
+        g_textEditor.SetText(g_scriptBuffer);
+        // Engine only supports Lua; enable colorizer and set dark palette by default.
+        g_textEditor.SetPalette(TextEditor::GetDarkPalette());
+        g_textEditor.SetColorizerEnable(true);
+        g_scriptEditorOpen = true;
+    }
+
+    bool EditorUI::IsScriptEditorOpen() { return g_scriptEditorOpen; }
+    const std::string &EditorUI::GetOpenScriptPath() { return g_openScriptPath; }
+    void EditorUI::CloseScriptEditor() { g_scriptEditorOpen = false; }
+
+    void EditorUI::RenderScriptEditorOverlay()
+    {
+        if (!g_scriptEditorOpen)
+            return;
+        ImGuiIO &io = ImGui::GetIO();
+        ImGui::SetNextWindowPos(ImVec2(0, 0));
+        ImGui::SetNextWindowSize(io.DisplaySize);
+        ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_MenuBar;
+        if (ImGui::Begin("Script Editor", nullptr, flags))
+        {
+            if (ImGui::BeginMenuBar())
+            {
+                if (ImGui::BeginMenu("File"))
+                {
+                    if (ImGui::MenuItem("Save", "Ctrl+S", false, true))
+                    {
+                        // Save file
+                        std::string full = g_openScriptPath;
+                        if (Core::Project::HasPath() && !std::filesystem::exists(full))
+                        {
+                            std::string tryFull = Core::Project::GetPath() + "/" + g_openScriptPath;
+                            full = tryFull;
+                        }
+                        std::ofstream ofs(full);
+                        if (ofs.is_open())
+                        {
+                            g_scriptBuffer = g_textEditor.GetText();
+                            ofs << g_scriptBuffer;
+                            g_scriptDirty = false;
+                        }
+                    }
+                    if (ImGui::MenuItem("Close", nullptr))
+                    {
+                        if (!g_scriptDirty)
+                        {
+                            g_scriptEditorOpen = false;
+                        }
+                        else
+                        {
+                            // simple prompt inline
+                            ImGui::OpenPopup("Unsaved##script");
+                        }
+                    }
+                    if (ImGui::MenuItem("Exit To Scene", "Esc"))
+                    {
+                        if (!g_scriptDirty)
+                            g_scriptEditorOpen = false;
+                        else
+                            ImGui::OpenPopup("Unsaved##script");
+                    }
+                    ImGui::EndMenu();
+                }
+                if (ImGui::BeginMenu("Run"))
+                {
+                    if (ImGui::MenuItem("Reload Script", nullptr, false, false))
+                    {
+                        // placeholder for future VM reload
+                    }
+                    ImGui::EndMenu();
+                }
+                ImGui::EndMenuBar();
+            }
+            // ESC key quick exit
+            if (ImGui::IsKeyPressed(ImGuiKey_Escape))
+            {
+                if (!g_scriptDirty)
+                    g_scriptEditorOpen = false;
+                else
+                    ImGui::OpenPopup("Unsaved##script");
+            }
+            if (ImGui::BeginPopupModal("Unsaved##script", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+            {
+                ImGui::Text("Discard unsaved changes?");
+                if (ImGui::Button("Discard"))
+                {
+                    g_scriptEditorOpen = false;
+                    g_scriptDirty = false;
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Cancel"))
+                {
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::EndPopup();
+            }
+            ImGui::Separator();
+            ImGui::TextUnformatted(g_openScriptPath.c_str());
+            ImGui::Separator();
+            // Integrated colored text editor (minimal implementation)
+            g_textEditor.Render("##ScriptColorEditor", ImGui::GetContentRegionAvail());
+            if (g_textEditor.IsTextChanged())
+            {
+                g_scriptDirty = true;
+            }
+            ImGui::Separator();
+            if (ImGui::Button("Save"))
+            {
+                std::string full = g_openScriptPath;
+                if (Core::Project::HasPath() && !std::filesystem::exists(full))
+                    full = Core::Project::GetPath() + "/" + g_openScriptPath;
+                std::ofstream ofs(full);
+                if (ofs.is_open())
+                {
+                    g_scriptBuffer = g_textEditor.GetText();
+                    ofs << g_scriptBuffer;
+                    g_scriptDirty = false;
+                }
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Exit"))
+            {
+                if (!g_scriptDirty)
+                    g_scriptEditorOpen = false;
+                else
+                    ImGui::OpenPopup("Unsaved##script");
+            }
+            // Keep authoritative buffer updated if user saved earlier via menu (optional sync each frame if not dirty)
+            if (!g_scriptDirty)
+            {
+                // no-op; could sync here if external modifications were possible
+            }
+            // If buffer resized externally we would reallocate; simple approach keeps capacity safe.
+        }
+        ImGui::End();
+    }
 
     static std::string GetEditorConfigPath()
     {
@@ -913,6 +1091,7 @@ namespace Kiaak
                                 bool hasRB = node->GetComponent<Core::Rigidbody2D>() != nullptr;
                                 bool hasBox = node->GetComponent<Core::BoxCollider2D>() != nullptr;
                                 bool hasTilemap = node->GetComponent<Core::Tilemap>() != nullptr;
+                                bool hasScript = node->GetComponent<Core::ScriptComponent>() != nullptr;
                                 if (ImGui::MenuItem("Add Rigidbody 2D", nullptr, false, hasSprite && !hasRB))
                                 {
                                     auto *rb = node->AddComponent<Core::Rigidbody2D>();
@@ -989,6 +1168,55 @@ namespace Kiaak
                                         }
                                     }
                                 add_tilemap_saved:;
+                                }
+                                if (ImGui::MenuItem("Add Script", nullptr, false, !hasScript))
+                                {
+                                    auto *scpt = node->AddComponent<Core::ScriptComponent>();
+                                    if (scpt)
+                                    {
+                                        if (Core::Project::HasPath())
+                                        {
+                                            auto scriptsDir = Core::Project::GetPath() + "/scripts";
+                                            std::error_code ec;
+                                            std::filesystem::create_directories(scriptsDir, ec);
+                                            std::string base = node->GetName();
+                                            if (base.empty())
+                                                base = "Script";
+                                            std::string fname = base + "_Script.lua";
+                                            std::string full = scriptsDir + "/" + fname;
+                                            int counter = 1;
+                                            while (std::filesystem::exists(full))
+                                            {
+                                                fname = base + "_Script" + std::to_string(counter++) + ".lua";
+                                                full = scriptsDir + "/" + fname;
+                                            }
+                                            std::ofstream ofs(full);
+                                            if (ofs.is_open())
+                                            {
+                                                ofs << "-- Auto-generated script for object: " << node->GetName() << "\n";
+                                                ofs << "function OnStart()\n    -- init\nend\n\nfunction OnUpdate(dt)\n    -- logic\nend\n";
+                                            }
+                                            scpt->SetScriptPath("scripts/" + fname);
+                                            if (sceneManager)
+                                            {
+                                                for (auto &nm : sceneManager->GetSceneNames())
+                                                {
+                                                    auto *sc = sceneManager->GetScene(nm);
+                                                    if (!sc)
+                                                        continue;
+                                                    for (auto *go : sc->GetAllGameObjects())
+                                                    {
+                                                        if (go == node)
+                                                        {
+                                                            Core::SceneSerialization::SaveSceneToFile(sc, Core::Project::GetScenesPath() + "/" + nm + ".scene");
+                                                            goto add_script_done;
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                add_script_done:;
                                 }
                                 if (ImGui::MenuItem("Delete"))
                                 {
@@ -1288,6 +1516,19 @@ namespace Kiaak
                                 }
                             }
                         }
+                    }
+                }
+
+                // Script component UI
+                if (auto *script = selectedObject->GetComponent<Core::ScriptComponent>())
+                {
+                    ImGui::Separator();
+                    ImGui::Text("Script");
+                    std::string path = script->GetScriptPath();
+                    ImGui::TextWrapped("Path: %s", path.c_str());
+                    if (ImGui::Button("Open In Editor"))
+                    {
+                        EditorUI::OpenScriptEditor(path);
                     }
                 }
 

@@ -36,6 +36,7 @@ namespace Kiaak
         // Only show editor panels when in editor mode (play mode hides hierarchy/inspector/asset browser)
         if (Engine::Get() && Engine::Get()->IsEditorMode())
         {
+            bool scriptMode = EditorUI::IsScriptEditorOpen();
             if (m_sceneManager)
             {
                 Core::Scene *sceneRef = m_scene;
@@ -43,12 +44,16 @@ namespace Kiaak
                 if (sceneRef != m_scene)
                     m_scene = sceneRef;
             }
-            EditorUI::RenderInspector(m_sceneManager, m_selectedObject);
-            EditorUI::RenderAssetBrowser();
-            EditorUI::RenderAnimatorPanel();
-            // Modal / separate windows after main panels
-            // (Will early-return if not active)
-            // Access private via friend not defined; use static function in class (public? currently private, so move call? We'll expose by adding public call.)
+            if (!scriptMode)
+            {
+                EditorUI::RenderInspector(m_sceneManager, m_selectedObject);
+                EditorUI::RenderAssetBrowser();
+                EditorUI::RenderAnimatorPanel();
+            }
+            if (scriptMode)
+            {
+                EditorUI::RenderScriptEditorOverlay();
+            }
         }
     }
 

@@ -31,6 +31,7 @@ set(IMGUI_SOURCES
     external/imgui/backends/imgui_impl_opengl3.cpp
 )
 
+
 # Create the executable
 set(PLATFORM_SOURCES)
 if(APPLE)
@@ -46,6 +47,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE external/glad/include)
 target_include_directories(${PROJECT_NAME} PRIVATE external/imgui)
 target_include_directories(${PROJECT_NAME} PRIVATE external/imgui/backends)
 target_include_directories(${PROJECT_NAME} PRIVATE external)
+target_include_directories(${PROJECT_NAME} PRIVATE external/imgui_color_text_edit)
 target_include_directories(${PROJECT_NAME} PRIVATE /opt/homebrew/Cellar/glfw/3.4/include)
 target_include_directories(${PROJECT_NAME} PRIVATE /opt/homebrew/Cellar/glm/1.0.1/include)
 

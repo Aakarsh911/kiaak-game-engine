@@ -53,6 +53,13 @@ namespace Kiaak
         static int GetAssignedClip(Core::GameObject *go);                 // -1 if none
         static void SetAssignedClip(Core::GameObject *go, int clipIndex); // pass -1 to clear
 
+        // Script editor control
+        static void OpenScriptEditor(const std::string &scriptPath);
+        static bool IsScriptEditorOpen();
+        static void CloseScriptEditor();
+        static void RenderScriptEditorOverlay(); // full-screen editor; called early in EndFrame() path
+        static const std::string &GetOpenScriptPath();
+
     private:
         static void RefreshAssetList(bool force = false);
         static const std::vector<std::string> &GetAssetFiles();
