@@ -59,6 +59,9 @@ namespace Kiaak
                     m_velocity += j / m_mass;
             }
 
+            // Debug / inspector: read accumulated force pending application
+            glm::vec2 GetAccumulatedForce() const { return m_accumForce; }
+
             // Teleport without impulses
             void Teleport(const glm::vec2 &pos, float rotationDegZ = 0.0f);
 

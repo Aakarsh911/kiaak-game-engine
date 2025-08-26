@@ -5,6 +5,30 @@ project(KiaakEngine VERSION 1.0)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# FetchContent will be used to acquire minimal dependencies (lua, sol2) when not provided by system
+include(FetchContent)
+
+# Try to find system Lua first; if not found, we'll fetch and build Lua 5.4
+find_package(Lua 5.4 QUIET)
+if(NOT Lua_FOUND)
+    message(STATUS "System Lua 5.4 not found — Fetching Lua ${PROJECT_NAME} will build a private copy")
+    FetchContent_Declare(
+        lua_src
+        GIT_REPOSITORY https://github.com/lua/lua.git
+        GIT_TAG v5.4.6
+    )
+    FetchContent_MakeAvailable(lua_src)
+
+    # Build a tiny static lib from the Lua source (Lua places C files at repo root)
+    file(GLOB LUA_SRC_FILES "${lua_src_SOURCE_DIR}/*.c")
+    add_library(lua_static STATIC ${LUA_SRC_FILES})
+    target_include_directories(lua_static PUBLIC "${lua_src_SOURCE_DIR}")
+    # Expose target name 'lua' for linking convenience
+    add_library(lua ALIAS lua_static)
+else()
+    message(STATUS "Found system Lua: ${LUA_INCLUDE_DIR} (lib: ${LUA_LIBRARIES})")
+endif()
+
 # Use pkg-config to find GLFW
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(GLFW REQUIRED glfw3)
@@ -62,6 +86,18 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     glfw
     OpenGL::GL
 )
+
+# Fetch sol2 headers (header-only adapter) if not already vendored
+FetchContent_Declare(
+    sol2
+    GIT_REPOSITORY https://github.com/ThePhD/sol2.git
+    GIT_TAG v3.3.0
+)
+FetchContent_MakeAvailable(sol2)
+target_include_directories(${PROJECT_NAME} PRIVATE ${sol2_SOURCE_DIR}/include)
+
+# Link Lua (system or fetched) to the engine
+target_link_libraries(${PROJECT_NAME} PRIVATE lua)
 
 if(APPLE)
     target_link_libraries(${PROJECT_NAME} PRIVATE "-framework Cocoa")

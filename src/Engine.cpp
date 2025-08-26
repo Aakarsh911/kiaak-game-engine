@@ -99,14 +99,130 @@ namespace Kiaak
             return false;
         }
 
+        InitLua();
+
         if (currentScene)
         {
             currentScene->Start();
         }
 
         SwitchToEditorMode();
+
         isRunning = true;
         return true;
+    }
+
+    void Engine::InitLua()
+    {
+        lua = std::make_unique<sol::state>();
+        // Open commonly used libraries (add string/table so scripts can format/build tables)
+        lua->open_libraries(sol::lib::base, sol::lib::math, sol::lib::coroutine, sol::lib::package, sol::lib::string, sol::lib::table);
+        lua->script("package.path = package.path .. ';./scripts/?.lua'");
+
+        // Simple logger exposed to Lua
+        lua->set_function("log", [](const std::string &msg)
+                          { std::cout << "[Lua] " << msg << std::endl; });
+
+        // Bind Transform (minimal, focused on movement/position)
+        lua->new_usertype<Kiaak::Core::Transform>("Transform", "set_position", [](Kiaak::Core::Transform &t, float x, float y, float z)
+                                                  { t.SetPosition(x, y, z); }, "get_position", [](Kiaak::Core::Transform &t)
+                                                  {
+                                                      auto p = t.GetPosition();
+                                                      return std::vector<float>{p.x, p.y, p.z}; }, "translate", [](Kiaak::Core::Transform &t, float x, float y, float z)
+                                                  { t.Translate(x, y, z); }, "set_rotation_z", [](Kiaak::Core::Transform &t, float deg)
+                                                  { t.SetRotationZ(deg); });
+
+        // Bind Rigidbody2D movement helpers
+        lua->new_usertype<Kiaak::Core::Rigidbody2D>("Rigidbody2D", "set_velocity", [](Kiaak::Core::Rigidbody2D &rb, float x, float y)
+                                                    { rb.SetVelocity(glm::vec2(x, y)); }, "get_velocity", [](Kiaak::Core::Rigidbody2D &rb)
+                                                    {
+                                                        auto v = rb.GetVelocity();
+                                                        return std::vector<float>{v.x, v.y}; }, "add_force", [](Kiaak::Core::Rigidbody2D &rb, float x, float y)
+                                                    { rb.AddForce(glm::vec2(x, y)); }, "add_impulse", [](Kiaak::Core::Rigidbody2D &rb, float x, float y)
+                                                    { rb.AddImpulse(glm::vec2(x, y)); }, "teleport", [](Kiaak::Core::Rigidbody2D &rb, float x, float y, float rot)
+                                                    { rb.Teleport(glm::vec2(x, y), rot); }, "is_grounded", &Kiaak::Core::Rigidbody2D::IsGrounded);
+
+        // Bind GameObject surface for scripts (get transform / get rigidbody)
+        lua->new_usertype<Kiaak::Core::GameObject>("GameObject", "get_name", &Kiaak::Core::GameObject::GetName, "get_id", &Kiaak::Core::GameObject::GetID, "get_transform", [](Kiaak::Core::GameObject &go)
+                                                   { return go.GetTransform(); }, "get_rigidbody", [](Kiaak::Core::GameObject &go)
+                                                   { return go.GetComponent<Kiaak::Core::Rigidbody2D>(); });
+
+        // Convenience helpers: find gameobject by name or id
+        lua->set_function("FindGameObject", [](const std::string &name) -> Kiaak::Core::GameObject *
+                          { return Engine::Get()->GetGameObject(name); });
+
+        lua->set_function("GetGameObjectByID", [](uint32_t id) -> Kiaak::Core::GameObject *
+                          { return Engine::Get()->GetGameObject(id); });
+
+        // High-level movement helpers for convenience in scripts
+        lua->set_function("ApplyImpulseTo", [](const std::string &name, float x, float y)
+                          {
+                              if (!Engine::Get())
+                                  return;
+                              if (auto *go = Engine::Get()->GetGameObject(name))
+                              {
+                                  if (auto *rb = go->GetComponent<Kiaak::Core::Rigidbody2D>())
+                                  {
+                                      rb->AddImpulse(glm::vec2(x, y));
+                                  }
+                              } });
+
+        lua->set_function("SetVelocityTo", [](const std::string &name, float x, float y)
+                          {
+                              if (!Engine::Get())
+                                  return;
+                              if (auto *go = Engine::Get()->GetGameObject(name))
+                              {
+                                  if (auto *rb = go->GetComponent<Kiaak::Core::Rigidbody2D>())
+                                  {
+                                      rb->SetVelocity(glm::vec2(x, y));
+                                  }
+                              } });
+
+        // Input helpers: expose simple key checks by name (e.g. "A", "D", "Left", "Space")
+        auto keyFromName = [](const std::string &name) -> int
+        {
+            std::string n = name;
+            for (auto &c : n)
+                c = (char)std::toupper((unsigned char)c);
+            if (n == "A")
+                return GLFW_KEY_A;
+            if (n == "D")
+                return GLFW_KEY_D;
+            if (n == "W")
+                return GLFW_KEY_W;
+            if (n == "S")
+                return GLFW_KEY_S;
+            if (n == "LEFT")
+                return GLFW_KEY_LEFT;
+            if (n == "RIGHT")
+                return GLFW_KEY_RIGHT;
+            if (n == "UP")
+                return GLFW_KEY_UP;
+            if (n == "DOWN")
+                return GLFW_KEY_DOWN;
+            if (n == "SPACE")
+                return GLFW_KEY_SPACE;
+            if (n == "ESC" || n == "ESCAPE")
+                return GLFW_KEY_ESCAPE;
+            // single letters fallback
+            if (n.size() == 1 && std::isalpha((unsigned char)n[0]))
+                return GLFW_KEY_A + (n[0] - 'A');
+            return -1;
+        };
+
+        lua->set_function("IsKeyPressed", [keyFromName](const std::string &k)
+                          { int key = keyFromName(k); return key >= 0 ? Input::IsKeyPressed(key) : false; });
+        lua->set_function("IsKeyHeld", [keyFromName](const std::string &k)
+                          { int key = keyFromName(k); return key >= 0 ? Input::IsKeyHeld(key) : false; });
+        lua->set_function("IsKeyReleased", [keyFromName](const std::string &k)
+                          { int key = keyFromName(k); return key >= 0 ? Input::IsKeyReleased(key) : false; });
+
+        lua->set_function("GetMousePosition", []()
+                          {
+                              double x = 0.0, y = 0.0;
+                              Input::GetMousePosition(x, y);
+                              return std::vector<double>{x, y}; });
     }
 
     // Main loop: input, update, render, and advance input states

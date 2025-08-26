@@ -2,6 +2,7 @@
 
 #include "Core/Component.hpp"
 #include <string>
+#include <sol/sol.hpp>
 
 namespace Kiaak::Core
 {
@@ -18,11 +19,13 @@ namespace Kiaak::Core
         void SetScriptPath(const std::string &p) { m_scriptPath = p; }
         const std::string &GetScriptPath() const { return m_scriptPath; }
 
-        void Start() override {}
-        void Update(double) override {}
+        void Start() override;
+        void Update(double) override;
 
     private:
+        sol::protected_function m_updateFunc;
         std::string m_scriptPath; // relative to project root (e.g., scripts/MyScript.lua)
+        int m_updateCalls = 0;
     };
 
 } // namespace Kiaak::Core

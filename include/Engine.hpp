@@ -10,6 +10,8 @@
 #include <memory>
 #include <glm/glm.hpp>
 #include <unordered_map>
+#include <memory>
+#include <sol/sol.hpp>
 
 namespace Kiaak
 {
@@ -26,6 +28,7 @@ namespace Kiaak
         ~Engine();
 
         bool Initialize();
+        void InitLua();
         void Run();
         void Shutdown();
 
@@ -41,10 +44,13 @@ namespace Kiaak
 
         // Editor/play mode control
         bool IsEditorMode() const { return editorMode; }
-        void TogglePlayPause(); // toggles between editor & play (replaces old 'E' key hotkey)
+        void TogglePlayPause();
 
-        // Global accessor (lightweight singleton pattern for UI callbacks)
+        // Global accessor
         static Engine *Get() { return s_instance; }
+
+        // Access to lua state
+        sol::state *GetLua() { return lua.get(); }
 
     private:
         // Core systems
@@ -98,9 +104,6 @@ namespace Kiaak
         void FixedUpdate(double fixedDeltaTime);
         void Render();
 
-        // Demo creation (can be removed later when we have scene loading)
-        // void CreateGameObjectDemo(); // disabled
-
         // Editor mode
         void ToggleEditorMode();
         void HandleEditorInput(double deltaTime);
@@ -114,6 +117,9 @@ namespace Kiaak
         void RenderSelectionGizmo();
         void PaintSelectedTilemap();
         void RenderTilemapGrid();
+
+        // Lua scripting
+        std::unique_ptr<sol::state> lua;
 
         // Singleton instance pointer
         static Engine *s_instance;

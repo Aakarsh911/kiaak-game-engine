@@ -80,11 +80,21 @@ namespace Kiaak
                     {
                         acc = m_gravity * rb->GetGravityScale();
                     }
+
+                    // Apply accumulated external forces (AddForce) -> acceleration = F / m
+                    glm::vec2 extF = rb->GetAccumulatedForce();
+                    if (rb->GetMass() > 0.0f)
+                        acc += extF / rb->GetMass();
+
                     vel += acc * fdt;
                     // simple linear damping
                     vel *= (1.0f / (1.0f + rb->GetLinearDamping() * fdt));
 
                     rb->SetVelocity(vel);
+
+                    // Clear accumulated forces after applying them for this step
+                    // (forces are re-applied each frame by callers if persistent)
+                    rb->AddForce(glm::vec2(0.0f - extF.x, 0.0f - extF.y));
 
                     // Integrate velocity -> position
                     if (auto *go = rb->GetGameObject())
