@@ -223,6 +223,28 @@ namespace Kiaak
                               double x = 0.0, y = 0.0;
                               Input::GetMousePosition(x, y);
                               return std::vector<double>{x, y}; });
+
+        // Expose a function that mirrors the inspector assignment: assign an animation clip (by name)
+        // to a GameObject by name. This uses EditorUI::SetAssignedClip so runtime scripts use the
+        // same assignment mapping the editor uses.
+        lua->set_function("AssignAnimationByName", [](const std::string &objName, const std::string &clipName)
+                          {
+                              if (!Engine::Get())
+                                  return;
+                              auto *go = Engine::Get()->GetGameObject(objName);
+                              if (!go)
+                                  return;
+                              const auto &clips = Kiaak::EditorUI::GetAnimationClips();
+                              int found = -1;
+                              for (int i = 0; i < (int)clips.size(); ++i)
+                              {
+                                  if (clips[i].name == clipName)
+                                  {
+                                      found = i;
+                                      break;
+                                  }
+                              }
+                              Kiaak::EditorUI::SetAssignedClip(go, found); });
     }
 
     // Main loop: input, update, render, and advance input states
