@@ -13,6 +13,7 @@
 #include <sstream>
 #include <iostream>
 #include <filesystem>
+#include <tuple>
 
 namespace Kiaak::Core
 {
@@ -39,7 +40,25 @@ namespace Kiaak::Core
         if (auto *anim = go->GetComponent<Kiaak::Core::Animator>())
             out << "    ANIMATOR clipIndex " << anim->GetClipIndex() << "\n";
         if (auto *cam = go->GetComponent<Camera>())
-            out << "    CAMERA orthoSize " << cam->GetOrthographicSize() << " zoom " << cam->GetZoom() << "\n";
+        {
+            out << "    CAMERA orthoSize " << cam->GetOrthographicSize() << " zoom " << cam->GetZoom();
+            uint32_t follow = cam->GetFollowTargetID();
+            // Debug: log follow id being written
+            std::cerr << "[SceneSave] Writing CAMERA for GameObject='" << go->GetName() << "' followID=" << follow << "\n";
+            if (follow != 0)
+            {
+                out << " followID " << follow;
+                // Also write followName when possible (more robust across loads)
+                if (auto *scene = go->GetScene())
+                {
+                    if (auto *target = scene->GetGameObject(follow))
+                    {
+                        out << " followName " << target->GetName();
+                    }
+                }
+            }
+            out << "\n";
+        }
 
         if (auto *rb = go->GetComponent<Rigidbody2D>())
         {
@@ -146,6 +165,8 @@ namespace Kiaak::Core
         if (!in.is_open())
             return false;
         std::vector<std::pair<Scene *, std::string>> pendingActive;
+        // pending followName resolutions: tuple(scene, cameraOwnerName, followName)
+        std::vector<std::tuple<Scene *, std::string, std::string>> pendingFollowByName;
         std::string line;
         Scene *currentScene = nullptr;
         while (std::getline(in, line))
@@ -342,12 +363,18 @@ namespace Kiaak::Core
                 auto *go = objs.back();
                 float ortho = 10.0f, zoom = 1.0f;
                 std::string lbl;
+                uint32_t parsedFollowID = 0;
+                std::string parsedFollowName;
                 while (iss >> lbl)
                 {
                     if (lbl == "orthoSize")
                         iss >> ortho;
                     else if (lbl == "zoom")
                         iss >> zoom;
+                    else if (lbl == "followID")
+                        iss >> parsedFollowID;
+                    else if (lbl == "followName")
+                        iss >> parsedFollowName;
                 }
                 auto *cam = go->GetComponent<Camera>();
                 if (!cam)
@@ -356,6 +383,10 @@ namespace Kiaak::Core
                 {
                     cam->SetOrthographicSize(ortho);
                     cam->SetZoom(zoom);
+                    if (parsedFollowID != 0)
+                        cam->SetFollowTargetByID(parsedFollowID);
+                    else if (!parsedFollowName.empty())
+                        pendingFollowByName.emplace_back(currentScene, go->GetName(), parsedFollowName);
                 }
             }
             else if (token == "RIGIDBODY2D" && currentScene)
@@ -436,6 +467,24 @@ namespace Kiaak::Core
                 }
             }
         }
+        // Resolve any pending followName -> followID mappings now that all objects exist
+        for (auto &[sc, camOwnerName, fname] : pendingFollowByName)
+        {
+            if (!sc)
+                continue;
+            auto *camOwner = sc->GetGameObject(camOwnerName);
+            if (!camOwner)
+                continue;
+            auto *camComp = camOwner->GetComponent<Camera>();
+            if (!camComp)
+                continue;
+            auto *target = sc->GetGameObject(fname);
+            if (target)
+            {
+                camComp->SetFollowTargetByID(target->GetID());
+            }
+        }
+
         for (auto &[sc, goName] : pendingActive)
         {
             if (!sc)
@@ -497,6 +546,7 @@ namespace Kiaak::Core
         std::string line;
         Scene *currentScene = nullptr;
         std::vector<std::pair<Scene *, std::string>> pendingActive;
+        std::vector<std::tuple<Scene *, std::string, std::string>> pendingFollowByName;
         while (std::getline(in, line))
         {
             Trim(line);
@@ -690,12 +740,18 @@ namespace Kiaak::Core
                 auto *go = objs.back();
                 float ortho = 10.0f, zoom = 1.0f;
                 std::string lbl;
+                uint32_t parsedFollowID = 0;
+                std::string parsedFollowName;
                 while (iss >> lbl)
                 {
                     if (lbl == "orthoSize")
                         iss >> ortho;
                     else if (lbl == "zoom")
                         iss >> zoom;
+                    else if (lbl == "followID")
+                        iss >> parsedFollowID;
+                    else if (lbl == "followName")
+                        iss >> parsedFollowName;
                 }
                 auto *cam = go->GetComponent<Camera>();
                 if (!cam)
@@ -704,6 +760,10 @@ namespace Kiaak::Core
                 {
                     cam->SetOrthographicSize(ortho);
                     cam->SetZoom(zoom);
+                    if (parsedFollowID != 0)
+                        cam->SetFollowTargetByID(parsedFollowID);
+                    else if (!parsedFollowName.empty())
+                        pendingFollowByName.emplace_back(currentScene, go->GetName(), parsedFollowName);
                 }
             }
             else if (token == "RIGIDBODY2D" && currentScene)
@@ -784,6 +844,22 @@ namespace Kiaak::Core
                 }
             }
         }
+        // Resolve followName entries for single-scene load
+        for (auto &[sc, camOwnerName, fname] : pendingFollowByName)
+        {
+            if (!sc)
+                continue;
+            auto *camOwner = sc->GetGameObject(camOwnerName);
+            if (!camOwner)
+                continue;
+            auto *camComp = camOwner->GetComponent<Camera>();
+            if (!camComp)
+                continue;
+            auto *target = sc->GetGameObject(fname);
+            if (target)
+                camComp->SetFollowTargetByID(target->GetID());
+        }
+
         for (auto &[sc, name] : pendingActive)
         {
             if (!sc)

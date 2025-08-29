@@ -1,5 +1,6 @@
 #include "Core/Camera.hpp"
 #include "Core/GameObject.hpp"
+#include "Core/Scene.hpp"
 #include "Core/Transform.hpp"
 #include <glm/gtc/matrix_transform.hpp>
 #include <glad/glad.h>
@@ -25,22 +26,6 @@ namespace Kiaak
         {
             if (!s_active)
                 SetActive();
-        }
-
-        void Camera::Update(double /*deltaTime*/)
-        {
-            // If transform moved/rotated/scaled, mark view dirty.
-            m_viewDirty = true;
-
-            GLint vp[4] = {0, 0, 0, 0};
-            glGetIntegerv(GL_VIEWPORT, vp);
-            static int lastW = -1, lastH = -1;
-            if (vp[2] != lastW || vp[3] != lastH)
-            {
-                m_projDirty = true;
-                lastW = vp[2];
-                lastH = vp[3];
-            }
         }
 
         void Camera::SetActive()
@@ -148,6 +133,59 @@ namespace Kiaak
             float farZ = 1000.0f;
 
             m_proj = glm::ortho(-halfWidth, halfWidth, -halfHeight, halfHeight, nearZ, farZ);
+        }
+
+        void Camera::SetFollowTargetByID(uint32_t id)
+        {
+            m_followTargetID = id;
+        }
+
+        // Note: follow logic implemented in Update by resolving the ID to a GameObject
+        void Camera::Update(double /*deltaTime*/)
+        {
+            // If transform moved/rotated/scaled, mark view dirty.
+            m_viewDirty = true;
+
+            // If follow target set, resolve and snap camera to target position (preserve Z)
+            if (m_followTargetID != 0)
+            {
+                // Resolve owning scene via GameObject lookup (SceneManager available via GameObject?)
+                // Simpler approach: GetGameObject() is a member on Component; use scene lookup from that GameObject.
+                auto *owner = GetGameObject();
+                if (owner)
+                {
+                    auto *scene = owner->GetScene();
+                    if (scene)
+                    {
+                        if (auto *target = scene->GetGameObject(m_followTargetID))
+                        {
+                            if (auto *t = target->GetTransform())
+                            {
+                                glm::vec3 p = t->GetPosition();
+                                // Set camera's GameObject transform to target (preserve Z offset of camera)
+                                if (auto *camTr = owner->GetTransform())
+                                {
+                                    glm::vec3 camPos = camTr->GetPosition();
+                                    camPos.x = p.x;
+                                    camPos.y = p.y;
+                                    camTr->SetPosition(camPos);
+                                    InvalidateView();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            GLint vp[4] = {0, 0, 0, 0};
+            glGetIntegerv(GL_VIEWPORT, vp);
+            static int lastW = -1, lastH = -1;
+            if (vp[2] != lastW || vp[3] != lastH)
+            {
+                m_projDirty = true;
+                lastW = vp[2];
+                lastH = vp[3];
+            }
         }
 
     } // namespace Core

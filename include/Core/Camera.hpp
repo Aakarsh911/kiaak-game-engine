@@ -46,6 +46,12 @@ namespace Kiaak
             // Manually mark view dirty (used when camera's transform changes outside normal Update cycle)
             void InvalidateView() { m_viewDirty = true; }
 
+            // ---- Follow target API ----
+            // Follow a GameObject by its ID (0 = none)
+            void SetFollowTargetByID(uint32_t id);
+            uint32_t GetFollowTargetID() const { return m_followTargetID; }
+            void ClearFollowTarget() { m_followTargetID = 0; }
+
         private:
             void RecalculateView() const;
             void RecalculateProjection() const;
@@ -60,6 +66,8 @@ namespace Kiaak
             mutable bool m_projDirty{true};
             mutable glm::mat4 m_view{1.0f};
             mutable glm::mat4 m_proj{1.0f};
+            // Follow target GameObject ID (0 = none)
+            uint32_t m_followTargetID{0};
         };
 
     } // namespace Core

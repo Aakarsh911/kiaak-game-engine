@@ -1516,6 +1516,65 @@ namespace Kiaak
                                 }
                             }
                         }
+                        // Follow target selector (only Sprite GameObjects allowed)
+                        uint32_t curFollow = cam->GetFollowTargetID();
+                        // Build list of candidate sprite GameObjects in owningScene
+                        if (owningScene)
+                        {
+                            auto objs = owningScene->GetAllGameObjects();
+                            std::vector<Core::GameObject *> spriteObjs;
+                            std::vector<const char *> labels;
+                            std::vector<std::string> labelStorage; // keep storage alive
+                            labelStorage.push_back("<None>");
+                            labels.push_back(labelStorage.back().c_str());
+                            spriteObjs.push_back(nullptr);
+                            for (auto *go : objs)
+                            {
+                                if (!go)
+                                    continue;
+                                if (go->GetComponent<Graphics::SpriteRenderer>())
+                                {
+                                    spriteObjs.push_back(go);
+                                    labelStorage.push_back(go->GetName());
+                                    labels.push_back(labelStorage.back().c_str());
+                                }
+                            }
+                            // Build a single null-separated items string for ImGui
+                            std::string itemsConcat;
+                            for (auto &s : labelStorage)
+                            {
+                                itemsConcat += s;
+                                itemsConcat.push_back('\0');
+                            }
+                            // find index of current selection
+                            int selIndex = 0;
+                            for (size_t i = 1; i < spriteObjs.size(); ++i)
+                            {
+                                if (spriteObjs[i] && spriteObjs[i]->GetID() == curFollow)
+                                {
+                                    selIndex = (int)i;
+                                    break;
+                                }
+                            }
+                            if (!labelStorage.empty())
+                            {
+                                if (ImGui::Combo("Follow Sprite", &selIndex, itemsConcat.c_str()))
+                                {
+                                    uint32_t newID = 0;
+                                    if (selIndex > 0 && selIndex < (int)spriteObjs.size() && spriteObjs[selIndex])
+                                        newID = spriteObjs[selIndex]->GetID();
+                                    cam->SetFollowTargetByID(newID);
+                                    // Debug: log follow selection
+                                    std::cerr << "[EditorUI] Set follow target for camera '" << cam->GetGameObject()->GetName() << "' to ID=" << newID << "\n";
+                                    if (Core::Project::HasPath())
+                                    {
+                                        auto nm = sceneManager->GetSceneName(owningScene);
+                                        if (!nm.empty())
+                                            Core::SceneSerialization::SaveSceneToFile(owningScene, Core::Project::GetScenesPath() + "/" + nm + ".scene");
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
 
