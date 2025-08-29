@@ -224,9 +224,6 @@ namespace Kiaak
                               Input::GetMousePosition(x, y);
                               return std::vector<double>{x, y}; });
 
-        // Expose a function that mirrors the inspector assignment: assign an animation clip (by name)
-        // to a GameObject by name. This uses EditorUI::SetAssignedClip so runtime scripts use the
-        // same assignment mapping the editor uses.
         lua->set_function("AssignAnimationByName", [](const std::string &objName, const std::string &clipName)
                           {
                               if (!Engine::Get())
@@ -245,6 +242,29 @@ namespace Kiaak
                                   }
                               }
                               Kiaak::EditorUI::SetAssignedClip(go, found); });
+
+        lua->set_function("PlayAnimationByName", [](const std::string &objName, const std::string &clipName)
+                          {
+                              if (!Engine::Get())
+                                  return;
+                              auto *go = Engine::Get()->GetGameObject(objName);
+                              if (!go)
+                                  return;
+                              auto *anim = go->GetComponent<Kiaak::Core::Animator>();
+                              if (!anim)
+                                  anim = go->AddComponent<Kiaak::Core::Animator>();
+                              if (!anim)
+                                  return;
+                              const auto &clips = Kiaak::EditorUI::GetAnimationClips();
+                              for (int i = 0; i < (int)clips.size(); ++i)
+                              {
+                                  if (clips[i].name == clipName)
+                                  {
+                                      anim->SetClipIndex(i);
+                                      anim->Play();
+                                      return;
+                                  }
+                              } });
     }
 
     // Main loop: input, update, render, and advance input states
