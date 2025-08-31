@@ -18,6 +18,19 @@ namespace Kiaak
         class Physics2D
         {
         public:
+            // Contact info struct exposed for read-only access
+            struct Contact
+            {
+                Collider2D *a{nullptr};
+                Collider2D *b{nullptr};
+                glm::vec2 point{0.0f};
+                glm::vec2 normal{0.0f};
+                float penetration{0.0f};
+            };
+
+            // Access contacts recorded during the last Step()
+            const std::vector<Contact> &GetContacts() const { return m_contacts; }
+
             Physics2D();
             ~Physics2D() = default;
 
@@ -58,6 +71,7 @@ namespace Kiaak
             std::vector<BodyRec> m_bodies;
             std::vector<ColliderRec> m_colliders;
             std::unordered_set<PairKey, PairKeyHasher> m_prevFramePairs;
+            std::vector<Contact> m_contacts;
 
         public:
             const std::vector<ColliderRec> &GetColliders() const { return m_colliders; }

@@ -134,6 +134,8 @@ namespace Kiaak
             std::unordered_set<PairKey, PairKeyHasher> currentPairs;
             auto makeKey = [&](Collider2D *a, Collider2D *b)
             { if(a>b) std::swap(a,b); return PairKey{a,b}; };
+            // clear contacts for this step
+            m_contacts.clear();
             if (m_colliders.size() > 1)
             {
                 for (size_t i = 0; i < m_colliders.size(); ++i)
@@ -160,10 +162,22 @@ namespace Kiaak
                             continue;
                         // Record pair for event state tracking
                         auto key = makeKey(A, B);
+                        // compute a simple contact point (clamped overlap center)
+                        glm::vec2 contactPoint((std::max(aMin.x, bMin.x) + std::min(aMax.x, bMax.x)) * 0.5f,
+                                               (std::max(aMin.y, bMin.y) + std::min(aMax.y, bMax.y)) * 0.5f);
                         currentPairs.insert(key);
                         bool trigger = A->IsTrigger() || B->IsTrigger();
                         if (trigger)
                         {
+                            // store a lightweight contact for triggers so scripts can see trigger overlaps
+                            Contact ct;
+                            ct.a = A;
+                            ct.b = B;
+                            ct.point = contactPoint;
+                            ct.normal = glm::vec2(0.0f, 0.0f);
+                            ct.penetration = 0.0f;
+                            m_contacts.push_back(ct);
+
                             bool was = m_prevFramePairs.find(key) != m_prevFramePairs.end();
                             if (!was)
                             {
@@ -230,6 +244,17 @@ namespace Kiaak
                             float cA = (aMin.y + aMax.y) * 0.5f;
                             float cB = (bMin.y + bMax.y) * 0.5f;
                             normal = (cA > cB) ? glm::vec2(0, 1) : glm::vec2(0, -1);
+                        }
+
+                        // store contact info for script access
+                        {
+                            Contact ct;
+                            ct.a = A;
+                            ct.b = B;
+                            ct.point = contactPoint;
+                            ct.normal = normal;
+                            ct.penetration = penetration;
+                            m_contacts.push_back(ct);
                         }
 
                         auto applyTranslation = [&](Collider2D *col, float scale)

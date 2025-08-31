@@ -147,6 +147,43 @@ namespace Kiaak
                                                    { return go.GetTransform(); }, "get_rigidbody", [](Kiaak::Core::GameObject &go)
                                                    { return go.GetComponent<Kiaak::Core::Rigidbody2D>(); });
 
+        // Bind SpriteRenderer and helpers to Lua so scripts can enable/disable sprite rendering
+        lua->new_usertype<Kiaak::Graphics::SpriteRenderer>("SpriteRenderer",
+                                                           "set_visible", &Kiaak::Graphics::SpriteRenderer::SetVisible,
+                                                           "is_visible", &Kiaak::Graphics::SpriteRenderer::IsVisible,
+                                                           "set_texture", [](Kiaak::Graphics::SpriteRenderer &sr, const std::string &path)
+                                                           { sr.SetTexture(path); });
+
+        // Allow getting sprite renderer from a GameObject
+        lua->set_function("GetSpriteRenderer", [](const std::string &name) -> Kiaak::Graphics::SpriteRenderer *
+                          {
+                              if (!Engine::Get())
+                                  return nullptr;
+                              if (auto *go = Engine::Get()->GetGameObject(name))
+                                  return go->GetComponent<Kiaak::Graphics::SpriteRenderer>();
+                              return nullptr; });
+
+        // Convenience global helpers: SetSpriteVisible/GetSpriteVisible by gameobject name
+        lua->set_function("SetSpriteVisible", [](const std::string &name, bool visible)
+                          {
+                              if (!Engine::Get())
+                                  return;
+                              if (auto *go = Engine::Get()->GetGameObject(name))
+                              {
+                                  if (auto *sr = go->GetComponent<Kiaak::Graphics::SpriteRenderer>())
+                                      sr->SetVisible(visible);
+                              } });
+        lua->set_function("GetSpriteVisible", [](const std::string &name) -> bool
+                          {
+                              if (!Engine::Get())
+                                  return false;
+                              if (auto *go = Engine::Get()->GetGameObject(name))
+                              {
+                                  if (auto *sr = go->GetComponent<Kiaak::Graphics::SpriteRenderer>())
+                                      return sr->IsVisible();
+                              }
+                              return false; });
+
         // Convenience helpers: find gameobject by name or id
         lua->set_function("FindGameObject", [](const std::string &name) -> Kiaak::Core::GameObject *
                           { return Engine::Get()->GetGameObject(name); });
@@ -223,6 +260,42 @@ namespace Kiaak
                               double x = 0.0, y = 0.0;
                               Input::GetMousePosition(x, y);
                               return std::vector<double>{x, y}; });
+
+        // Expose physics contacts to Lua as a pull API: GetPhysicsContacts() -> table of {aID,bID,point={x,y},normal={x,y},penetration}
+        lua->set_function("GetPhysicsContacts", [this]()
+                          {
+                              std::vector<sol::table> out;
+                              if (!Engine::Get())
+                                  return out;
+                              auto *sc = Engine::Get()->GetCurrentScene();
+                              if (!sc)
+                                  return out;
+                              auto *phys = sc->GetPhysics2D();
+                              if (!phys)
+                                  return out;
+                              sol::state_view lua_view(*this->lua);
+                              for (const auto &c : phys->GetContacts())
+                              {
+                                  sol::table t = lua_view.create_table();
+                                  uint32_t aID = 0, bID = 0;
+                                  if (c.a && c.a->GetGameObject())
+                                      aID = c.a->GetGameObject()->GetID();
+                                  if (c.b && c.b->GetGameObject())
+                                      bID = c.b->GetGameObject()->GetID();
+                                  t["aID"] = aID;
+                                  t["bID"] = bID;
+                                  sol::table pt = lua_view.create_table();
+                                  pt[1] = c.point.x;
+                                  pt[2] = c.point.y;
+                                  t["point"] = pt;
+                                  sol::table n = lua_view.create_table();
+                                  n[1] = c.normal.x;
+                                  n[2] = c.normal.y;
+                                  t["normal"] = n;
+                                  t["penetration"] = c.penetration;
+                                  out.push_back(t);
+                              }
+                              return out; });
 
         lua->set_function("AssignAnimationByName", [](const std::string &objName, const std::string &clipName)
                           {
@@ -647,6 +720,7 @@ namespace Kiaak
 
     void Engine::HandleEditorInput(double deltaTime)
     {
+        (void)deltaTime;
         static bool rightMousePressed = false;
         static double lastMouseX, lastMouseY;
 
